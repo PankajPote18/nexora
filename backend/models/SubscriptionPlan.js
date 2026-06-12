@@ -1,53 +1,49 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db.config');
 
-const Audio = sequelize.define('Audio', {
+const SubscriptionPlan = sequelize.define('SubscriptionPlan', {
     id: {
         type: DataTypes.BIGINT.UNSIGNED,
         primaryKey: true,
         autoIncrement: true
     },
-    title: {
+    name: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    description: {
-        type: DataTypes.TEXT,
-        allowNull: true
+    original_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false
     },
-    thumbnail: {
-        type: DataTypes.STRING,
-        allowNull: true
+    discounted_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false
     },
-    banner: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    audio_file: {
+    billing_cycle: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    duration: {
-        type: DataTypes.INTEGER, // duration in seconds
-        allowNull: true
+    number_of_days: {
+        type: DataTypes.INTEGER,
+        allowNull: false
     },
-    play_count: {
+    sort_order: {
         type: DataTypes.INTEGER,
         defaultValue: 0
     },
-    category_id: {
-        type: DataTypes.BIGINT.UNSIGNED,
-        allowNull: true
+    status: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     },
-    is_trending: {
+    is_recommended: {
         type: DataTypes.BOOLEAN,
         defaultValue: false
     }
 }, {
-    tableName: 'audio_contents',
+    tableName: 'subscription_plans',
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at'
 });
 
-module.exports = Audio;
+module.exports = SubscriptionPlan;
