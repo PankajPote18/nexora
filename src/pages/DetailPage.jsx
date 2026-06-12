@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Plus, ThumbsUp, ThumbsDown, Share2, Video } from 'lucide-react';
-import MovieRow from '../components/MovieRow';
+import { Play, Plus } from 'lucide-react';
 import { usePremiumModal } from '../context/PremiumModalContext';
 
 const DetailPage = () => {
@@ -40,7 +39,23 @@ const DetailPage = () => {
         const data = await response.json();
 
         setMovie(data);
-        setRelated(data.related || []);
+
+        // If the backend doesn't return related movies, fetch all and pick 6
+        if (data.related && data.related.length > 0) {
+          setRelated(data.related);
+        } else {
+          try {
+            const allRes = await fetch(`${import.meta.env.VITE_API_URL}/api/movies`);
+            if (allRes.ok) {
+              const allMovies = await allRes.json();
+              // Filter out the current movie and take up to 6
+              const filtered = allMovies.filter(m => m.id.toString() !== id.toString());
+              setRelated(filtered.slice(0, 6));
+            }
+          } catch (err) {
+            console.error("Could not fetch related fallback:", err);
+          }
+        }
       } catch (error) {
         console.error("Error fetching movie details:", error);
       } finally {
@@ -51,34 +66,33 @@ const DetailPage = () => {
     fetchMovie();
   }, [id]);
 
-  if (loading) return <div className="min-h-screen bg-bg-dark text-white flex items-center justify-center text-xl">Loading...</div>;
-  if (!movie) return <div className="min-h-screen bg-bg-dark text-white flex items-center justify-center text-xl">Movie not found</div>;
+  if (loading) return <div className="min-h-screen bg-[#02040a] text-white flex items-center justify-center text-xl">Loading...</div>;
+  if (!movie) return <div className="min-h-screen bg-[#02040a] text-white flex items-center justify-center text-xl">Movie not found</div>;
 
   return (
-    <div className="w-full bg-bg-dark text-white pt-6 md:pt-10 pb-16 px-4 md:px-12 min-h-[calc(100vh-80px)]">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-5 md:gap-10">
+    <div className="w-full bg-[#02040a] text-white pt-6 lg:pt-10 pb-16 px-4 lg:px-12 min-h-[calc(100vh-80px)]">
+      <div className="max-w-[1440px] mx-auto flex flex-col lg:flex-row gap-5 lg:gap-12">
 
         {/* Left Column: Poster Card */}
-        <div className="w-full md:w-1/2 shrink-0 flex justify-center md:justify-start">
-          <div className="w-full aspect-video bg-bg-card rounded-xl border border-white/10 relative overflow-hidden flex flex-col items-center justify-center shadow-2xl">
+        <div className="w-full lg:w-[55%] xl:w-[55%] shrink-0 flex justify-center lg:justify-start">
+          <div className="w-full aspect-video bg-[#090d16] rounded-xl lg:rounded-2xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center shadow-2xl">
             <img
               src={movie.backdropUrl || movie.posterUrl}
               alt={movie.title}
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#02040a]/90 to-transparent"></div>
           </div>
         </div>
 
         {/* Right Column: Details */}
-        <div className="w-full md:w-2/3 flex flex-col pt-1 md:pt-4">
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-black mb-3 tracking-tight">
+        <div className="w-full lg:w-[45%] xl:w-[45%] flex flex-col pt-2 lg:pt-0">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-black mb-3 tracking-tight text-white">
             {movie.title}
           </h1>
 
           {/* Badges & Genres */}
-          <div className="flex flex-wrap items-center gap-3 mb-3">
-            <span className="px-3 py-1 bg-[#00A8E1]/10 text-[#00A8E1] border border-[#00A8E1]/30 rounded-lg font-semibold text-sm">
+          <div className="flex flex-wrap items-center gap-2 lg:gap-3 mb-4 lg:mb-6">
+            <span className="px-3 py-1 lg:py-1.5 bg-[#00A8E1]/10 text-[#00A8E1] border border-[#00A8E1]/20 rounded-lg font-bold text-[11px] lg:text-[13px] tracking-wide">
               {movie.ageRating || 'U/A 13+'}
             </span>
 
@@ -88,7 +102,7 @@ const DetailPage = () => {
                 .map((genre, idx) => (
                   <span
                     key={idx}
-                    className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300 font-medium"
+                    className="px-3 py-1 lg:py-1.5 bg-white/5 rounded-lg text-[11px] lg:text-[13px] text-gray-300 font-bold tracking-wide"
                   >
                     {genre}
                   </span>
@@ -97,25 +111,25 @@ const DetailPage = () => {
           </div>
 
           {/* Description */}
-          <div className="max-w-3xl mb-5">
-            <p className="text-[11px] md:text-[12px] text-gray-400 font-semibold leading-relaxed">
+          <div className="max-w-2xl mb-6 lg:mb-8">
+            <p className="text-[13px] lg:text-[14px] text-gray-300 font-medium leading-relaxed">
               {movie.description}
             </p>
           </div>
 
           {/* Buttons */}
-          <div className="flex flex-row flex-nowrap gap-2 md:gap-3 w-full">
+          <div className="flex flex-row flex-nowrap gap-3 w-full lg:w-[90%] xl:w-[85%]">
             <Link
               to={`/player/${movie.id}`}
               onClick={handleWatchClick}
-              className="flex-1 flex items-center justify-center px-2 md:px-6 py-2.5 bg-white text-black text-xs md:text-sm font-bold rounded-xl hover:bg-gray-200 transition-all duration-300 hover:scale-105 cursor-pointer shadow-lg whitespace-nowrap"
+              className="flex-1 flex items-center justify-center px-4 py-3 lg:py-3.5 bg-white text-black text-[13px] lg:text-[15px] font-bold rounded-xl lg:rounded-[14px] hover:bg-gray-200 transition-all duration-300 hover:scale-105 cursor-pointer shadow-lg whitespace-nowrap"
             >
-              <Play size={16} fill="currentColor" className="mr-1.5 md:mr-2" />
+              <Play size={18} fill="currentColor" className="mr-2" />
               Watch now
             </Link>
 
-            <button className="flex-1 flex items-center justify-center px-2 md:px-6 py-2.5 bg-white/5 border border-white/10 text-white text-xs md:text-sm font-bold rounded-xl hover:bg-white/10 transition-all duration-300 hover:scale-105 cursor-pointer whitespace-nowrap">
-              <Plus size={16} className="mr-1.5 md:mr-2" />
+            <button className="flex-1 flex items-center justify-center px-4 py-3 lg:py-3.5 bg-[#181a20] border border-white/5 text-white text-[13px] lg:text-[15px] font-bold rounded-xl lg:rounded-[14px] hover:bg-[#252830] transition-all duration-300 hover:scale-105 cursor-pointer whitespace-nowrap">
+              <Plus size={18} className="mr-2" />
               Watchlist
             </button>
           </div>
@@ -124,21 +138,21 @@ const DetailPage = () => {
 
       {/* More Like This Section */}
       {related && related.length > 0 && (
-        <div className="max-w-7xl mx-auto mt-8 md:mt-12">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-gray-400 font-bold tracking-widest text-sm uppercase">More Like This</h2>
-            <button className="text-[#00A8E1] text-sm font-semibold hover:text-white transition cursor-pointer">See all</button>
+        <div className="max-w-[1440px] mx-auto mt-10 lg:mt-16">
+          <div className="flex items-center justify-between mb-6 lg:mb-8">
+            <h2 className="text-gray-400 font-bold tracking-[0.15em] text-sm lg:text-[15px] uppercase">MORE LIKE THIS</h2>
+            <button className="text-[#00A8E1] text-[13px] lg:text-[15px] font-bold hover:text-[#33bbf2] transition cursor-pointer">See all</button>
           </div>
 
-          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-6">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-8">
             {related.map((relMovie, idx) => (
               <div key={idx} className="flex flex-col group cursor-pointer">
-                <div className="aspect-square bg-bg-card rounded-xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center mb-2 md:mb-3 transition-transform duration-300 group-hover:scale-105 group-hover:border-[#00A8E1]/30 shadow-lg shadow-black/65">
-                  <img src={relMovie.backdropUrl || relMovie.posterUrl} alt={relMovie.title} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                <div className="aspect-square bg-[#090d16] rounded-[16px] overflow-hidden relative mb-3 lg:mb-4 transition-transform duration-300 group-hover:scale-105 shadow-lg">
+                  <img src={relMovie.backdropUrl || relMovie.posterUrl} alt={relMovie.title} className="absolute inset-0 w-full h-full object-cover" />
                 </div>
 
-                <h3 className="text-white font-semibold text-[11px] md:text-[12px] truncate group-hover:text-[#00A8E1] transition-colors">{relMovie.title}</h3>
-                <p className="text-gray-400 text-[9px] md:text-[10px] mt-0.5">{relMovie.year} • {relMovie.genres[0]}</p>
+                <h3 className="text-white font-bold text-[13px] lg:text-[15px] truncate group-hover:text-[#00A8E1] transition-colors">{relMovie.title}</h3>
+                <p className="text-gray-400 text-[11px] lg:text-[13px] mt-1 font-medium">{relMovie.year} • {relMovie.genres?.[0] || 'Drama'}</p>
               </div>
             ))}
           </div>
