@@ -14,26 +14,17 @@ const { Op } = require('sequelize');
 
 exports.getOne = async (req, res) => {
     try {
-        console.time('findMovie');
-
         const movie = await Movie.findByPk(req.params.id);
+        if (!movie) return res.status(404).json({ message: 'Movie not found' });
 
-        console.timeEnd('findMovie');
-
-        if (!movie) {
-            return res.status(404).json({ message: 'Movie not found' });
-        }
-
-        console.time('relatedMovies');
-
+        // Fetch 6 recent movies to serve as "More Like This", excluding the current one
         const related = await Movie.findAll({
             where: { id: { [Op.ne]: movie.id } },
             limit: 6,
             order: [['created_at', 'DESC']]
         });
 
-        console.timeEnd('relatedMovies');
-
+        // Combine the movie details and related movies in the response
         const movieData = movie.toJSON();
         movieData.related = related;
 
