@@ -1,25 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
   Menu, X, LayoutDashboard, Film, Users, LogOut,
   FileText, CreditCard, Info, ChevronDown, ChevronRight, Settings,
+  Layers, Monitor, Home
 } from 'lucide-react';
 
 const AdminLayout = () => {
   const location = useLocation();
-  const [pagesOpen, setPagesOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openMenus, setOpenMenus] = useState({
+    Master: true,
+  });
 
-  const menu = [
-    { name: 'Dashboard',     path: '/admin',               icon: LayoutDashboard },
-    { name: 'Movies',        path: '/admin/movies',         icon: Film },
-    { name: 'Users',         path: '/admin/users',          icon: Users },
-    { name: 'Subscriptions', path: '/admin/subscriptions',  icon: CreditCard },
-    // ── NEW ──────────────────────────────────────────────────────────────
-    { name: 'Settings',      path: '/admin/settings',       icon: Settings },
-    // ─────────────────────────────────────────────────────────────────────
-    { name: 'About Us',      path: '/admin/about-us',       icon: Info },
+  const menuConfig = [
+    {
+      name: 'Master',
+      icon: Layers,
+      children: [
+        { name: 'Genre Listing', path: '/admin/genres' },
+        { name: 'Language Listing', path: '/admin/languages' },
+        { name: 'Age Certificate', path: '/admin/age-certificates' },
+        { name: 'Mature Theme', path: '/admin/mature-themes' },
+        { name: 'Vendor', path: '/admin/vendors' },
+        { name: 'Badge', path: '/admin/badges' },
+      ]
+    },
+    {
+      name: 'Shows',
+      icon: Monitor,
+      children: [
+        { name: 'Show Listing', path: '/admin/movies' },
+      ]
+    },
+    {
+      name: 'Home',
+      icon: Home,
+      children: [
+        { name: 'Dashboard', path: '/admin' },
+      ]
+    },
+    {
+      name: 'Users',
+      icon: Users,
+      children: [
+        { name: 'User Listing', path: '/admin/users' },
+      ]
+    },
+    {
+      name: 'Subscription',
+      icon: CreditCard,
+      children: [
+        { name: 'Plans', path: '/admin/subscriptions' },
+      ]
+    },
+    {
+      name: 'Settings',
+      icon: Settings,
+      children: [
+        { name: 'Menu Settings', path: '/admin/settings' },
+        { name: 'Pages', path: '/admin/pages' },
+        { name: 'About Us', path: '/admin/about-us' },
+      ]
+    }
   ];
+
+  // Auto-open menu category based on current path
+  useEffect(() => {
+    menuConfig.forEach(category => {
+      if (category.children.some(child => location.pathname === child.path || (child.path !== '/admin' && location.pathname.startsWith(child.path)))) {
+        setOpenMenus(prev => ({ ...prev, [category.name]: true }));
+      }
+    });
+  }, [location.pathname]);
+
+  const toggleMenu = (name) => {
+    setOpenMenus(prev => ({ ...prev, [name]: !prev[name] }));
+  };
 
   return (
     <div className="min-h-screen bg-[#1c2333] text-gray-300 flex fixed inset-0 z-50 font-sans">
@@ -34,7 +91,7 @@ const AdminLayout = () => {
 
       {/* Admin Sidebar */}
       <div className={`fixed inset-y-0 left-0 w-64 bg-[#141a29] border-r border-gray-800 flex flex-col shrink-0 shadow-2xl z-40 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 h-20 flex items-center justify-between border-b border-gray-800/50">
+        <div className="p-6 h-20 flex items-center justify-between border-b border-gray-800/50 shrink-0">
           <h2 className="text-xl md:text-2xl font-bold text-[#4aa5ff] tracking-wider">Nexora Admin</h2>
           <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
             <X size={24} />
@@ -42,78 +99,55 @@ const AdminLayout = () => {
         </div>
 
         <div className="flex-1 py-6 space-y-1 px-4 overflow-y-auto custom-scrollbar">
+          {menuConfig.map((category) => {
+            const isOpen = openMenus[category.name];
+            const isActive = category.children.some(child => location.pathname === child.path);
 
-          {/* First 3 items: Dashboard, Movies, Users */}
-          {menu.slice(0, 3).map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                location.pathname === item.path
-                  ? 'bg-[#3b82f6] text-white font-semibold shadow-lg shadow-blue-500/20'
-                  : 'text-gray-400 hover:bg-[#1e2638] hover:text-white font-medium'
-              }`}
-            >
-              <item.icon size={20} strokeWidth={location.pathname === item.path ? 2.5 : 2} />
-              <span>{item.name}</span>
-            </Link>
-          ))}
-
-          {/* Pages Dropdown */}
-          <div className="pt-2 pb-1">
-            <button
-              onClick={() => setPagesOpen(!pagesOpen)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
-                pagesOpen || location.pathname.includes('/admin/page')
-                  ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-500/20'
-                  : 'text-gray-400 hover:bg-[#1e2638] hover:text-white'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <FileText size={20} strokeWidth={pagesOpen || location.pathname.includes('/admin/page') ? 2.5 : 2} />
-                <span>Pages</span>
-              </div>
-              {pagesOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-            </button>
-
-            {pagesOpen && (
-              <div className="mt-1 ml-4 pl-4 border-l-2 border-gray-700/50 space-y-1 flex flex-col py-2">
-                <Link
-                  to="/admin/pages"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                    location.pathname === '/admin/pages'
-                      ? 'text-[#4aa5ff] bg-[#4aa5ff]/10'
-                      : 'text-gray-400 hover:text-white hover:bg-[#1e2638]'
+            return (
+              <div key={category.name} className="pb-1">
+                <button
+                  onClick={() => toggleMenu(category.name)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
+                    isActive
+                      ? 'bg-[#5a6ef7] text-white shadow-lg shadow-indigo-500/20'
+                      : 'text-gray-400 hover:bg-[#1e2638] hover:text-white'
                   }`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${location.pathname === '/admin/pages' ? 'bg-[#4aa5ff]' : 'bg-gray-500'}`}></div>
-                  <span>Page Listing</span>
-                </Link>
-              </div>
-            )}
-          </div>
+                  <div className="flex items-center space-x-3">
+                    <category.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                    <span>{category.name}</span>
+                  </div>
+                  {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                </button>
 
-          {/* Remaining items: Subscriptions, Settings, About Us */}
-          {menu.slice(3).map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                location.pathname === item.path
-                  ? 'bg-[#3b82f6] text-white font-semibold shadow-lg shadow-blue-500/20'
-                  : 'text-gray-400 hover:bg-[#1e2638] hover:text-white font-medium'
-              }`}
-            >
-              <item.icon size={20} strokeWidth={location.pathname === item.path ? 2.5 : 2} />
-              <span>{item.name}</span>
-            </Link>
-          ))}
+                {isOpen && (
+                  <div className="mt-1 space-y-1 flex flex-col py-2">
+                    {category.children.map(child => {
+                      const isChildActive = location.pathname === child.path;
+                      return (
+                        <Link
+                          key={child.name}
+                          to={child.path}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={`flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ml-2 ${
+                            isChildActive
+                              ? 'text-[#00E5FF]'
+                              : 'text-gray-400 hover:text-white hover:bg-[#1e2638]'
+                          }`}
+                        >
+                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isChildActive ? 'bg-[#00E5FF]' : 'bg-gray-500'}`}></div>
+                          <span>{child.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        <div className="p-4 border-t border-gray-800/50">
+        <div className="p-4 border-t border-gray-800/50 shrink-0">
           <Link to="/" className="flex items-center space-x-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium">
             <LogOut size={20} />
             <span>Exit Admin</span>
@@ -134,8 +168,13 @@ const AdminLayout = () => {
               <Menu size={24} />
             </button>
             <h1 className="text-lg md:text-xl font-bold text-white uppercase tracking-wider truncate max-w-[150px] sm:max-w-xs">
-              {menu.find(m => m.path === location.pathname)?.name ||
-                (location.pathname === '/admin/pages' ? 'Pages' : 'Admin Panel')}
+              {(() => {
+                for (const cat of menuConfig) {
+                  const match = cat.children.find(c => c.path === location.pathname);
+                  if (match) return match.name;
+                }
+                return 'Admin Panel';
+              })()}
             </h1>
           </div>
           <div className="flex items-center space-x-3 md:space-x-5">

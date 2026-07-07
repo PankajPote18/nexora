@@ -15,8 +15,13 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminMovies from './pages/admin/AdminMovies';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 import AdminAboutUs from './pages/admin/AdminAboutUs';
-import AdminSettings from './pages/admin/AdminSettings';   // ← NEW
+import AdminSettings from './pages/admin/AdminSettings';
 import AdminPages from './pages/admin/AdminPages';
+import AdminGenres from './pages/admin/AdminGenres';
+import AdminLanguages from './pages/admin/AdminLanguages';
+import AdminAgeCertificates from './pages/admin/AdminAgeCertificates';
+import AdminMatureThemes from './pages/admin/AdminMatureThemes';
+import AdminBadges from './pages/admin/AdminBadges';
 import PlayerPage from './pages/PlayerPage';
 import ScrollToTop from './components/ScrollToTop';
 import { PremiumModalProvider } from './context/PremiumModalContext';
@@ -38,11 +43,19 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="movies" element={<AdminMovies />} />
-            <Route path="users" element={<div className="text-xl">Users Management Coming Soon</div>} />
+            <Route path="users" element={<div className="text-xl p-8 text-white">Users Management Coming Soon</div>} />
             <Route path="subscriptions" element={<AdminSubscriptions />} />
-            <Route path="settings" element={<AdminSettings />} />  {/* ← NEW */}
+            <Route path="settings" element={<AdminSettings />} />
             <Route path="about-us" element={<AdminAboutUs />} />
             <Route path="pages" element={<AdminPages />} />
+            
+            {/* New Routes */}
+            <Route path="genres" element={<AdminGenres />} />
+            <Route path="languages" element={<AdminLanguages />} />
+            <Route path="age-certificates" element={<AdminAgeCertificates />} />
+            <Route path="mature-themes" element={<AdminMatureThemes />} />
+            <Route path="vendors" element={<div className="text-xl p-8 text-white">Vendor Coming Soon</div>} />
+            <Route path="badges" element={<AdminBadges />} />
           </Route>
 
           {/* Public Routes with Navbar/Sidebar */}
