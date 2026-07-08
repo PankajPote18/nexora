@@ -51,23 +51,42 @@ const AdminAgeCertificates = () => {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
 
-  useEffect(() => {
-    // Mock API call
-    setTimeout(() => {
-      setItems(initialCertificates);
+  const fetchItems = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/master/age-certificates`);
+      const data = await res.json();
+      setItems(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
   }, []);
 
   const filtered = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()) || 
-    i.description.toLowerCase().includes(search.toLowerCase())
+    i.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggleStatus = (item) => {
-    setItems((prev) =>
-      prev.map((i) => i.id === item.id ? { ...i, status: !i.status } : i)
-    );
+  const toggleStatus = async (item) => {
+    try {
+      const updatedStatus = !item.status;
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/age-certificates/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: updatedStatus })
+      });
+      setItems((prev) =>
+        prev.map((i) => i.id === item.id ? { ...i, status: updatedStatus } : i)
+      );
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const openCreate = () => {
@@ -87,35 +106,49 @@ const AdminAgeCertificates = () => {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    // Mock saving
-    setTimeout(() => {
+    try {
+      const payload = {
+        name: formData.name,
+        description: formData.description,
+        sort_order: formData.sort_order,
+        status: formData.status
+      };
+
       if (editingItem) {
-        setItems(prev => prev.map(i => i.id === editingItem.id ? {
-          ...i,
-          name: formData.name,
-          description: formData.description,
-          sort_order: formData.sort_order,
-          status: formData.status,
-        } : i));
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/age-certificates/${editingItem.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       } else {
-        setItems(prev => [...prev, {
-          id: Date.now(),
-          name: formData.name,
-          description: formData.description,
-          sort_order: formData.sort_order,
-          status: formData.status,
-        }]);
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/age-certificates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       }
-      setSaving(false);
+      await fetchItems();
       setModalOpen(false);
-    }, 500);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    setItems(prev => prev.filter(i => i.id !== deleteId));
-    setDeleteId(null);
+  const handleDelete = async () => {
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/age-certificates/${deleteId}`, {
+        method: 'DELETE'
+      });
+      await fetchItems();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   return (

@@ -5,6 +5,14 @@ const SubscriptionPlan = require('./SubscriptionPlan');
 const SettingsPage = require('./SettingsPage');
 const SettingsMenu = require('./SettingsMenu');
 const Category = require('./Category');
+const HeroBanner = require('./HeroBanner');
+
+const Genre = require('./Genre');
+const Language = require('./Language');
+const AgeCertificate = require('./AgeCertificate');
+const MatureTheme = require('./MatureTheme');
+const Badge = require('./Badge');
+const Vendor = require('./Vendor');
 
 // Define Relationships here if needed in the future
 
@@ -15,5 +23,12 @@ module.exports = {
     SubscriptionPlan,
     SettingsPage,
     SettingsMenu,
-    Category
+    Category,
+    Genre,
+    Language,
+    AgeCertificate,
+    MatureTheme,
+    Badge,
+    Vendor,
+    HeroBanner
 };

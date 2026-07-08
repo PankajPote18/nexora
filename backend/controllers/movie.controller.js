@@ -35,13 +35,28 @@ exports.getOne = async (req, res) => {
     }
 };
 
+const crypto = require('crypto');
+
 exports.create = async (req, res) => {
     try {
-        const movie = await Movie.create(req.body);
+        const payload = { ...req.body };
+        if (!payload.id) {
+            payload.id = crypto.randomUUID();
+        }
+        
+        // Ensure arrays are stringified for TEXT columns
+        if (Array.isArray(payload.genres)) {
+            payload.genres = JSON.stringify(payload.genres);
+        }
+        if (Array.isArray(payload.cast)) {
+            payload.cast = JSON.stringify(payload.cast);
+        }
+
+        const movie = await Movie.create(payload);
         res.status(201).json(movie);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Error creating movie' });
+        res.status(500).json({ message: 'Error creating movie', error: err.message });
     }
 };
 
@@ -49,7 +64,16 @@ exports.update = async (req, res) => {
     try {
         const movie = await Movie.findByPk(req.params.id);
         if (!movie) return res.status(404).json({ message: 'Movie not found' });
-        await movie.update(req.body);
+        
+        const payload = { ...req.body };
+        if (Array.isArray(payload.genres)) {
+            payload.genres = JSON.stringify(payload.genres);
+        }
+        if (Array.isArray(payload.cast)) {
+            payload.cast = JSON.stringify(payload.cast);
+        }
+
+        await movie.update(payload);
         res.json(movie);
     } catch (err) {
         console.error(err);

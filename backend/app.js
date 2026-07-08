@@ -29,6 +29,8 @@ app.use('/api/settings-pages', require('./routes/settingsPage.routes'));
 app.use('/api/settings-menu', require('./routes/settingsMenu.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));
 app.use('/api/upload', require('./routes/upload.routes'));
+app.use('/api/master', require('./routes/master.routes'));
+app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {

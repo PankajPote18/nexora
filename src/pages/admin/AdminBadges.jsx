@@ -49,22 +49,41 @@ const AdminBadges = () => {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
 
-  useEffect(() => {
-    // Mock API call
-    setTimeout(() => {
-      setItems(initialBadges);
+  const fetchItems = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/master/badges`);
+      const data = await res.json();
+      setItems(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
   }, []);
 
   const filtered = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggleStatus = (item) => {
-    setItems((prev) =>
-      prev.map((i) => i.id === item.id ? { ...i, status: !i.status } : i)
-    );
+  const toggleStatus = async (item) => {
+    try {
+      const updatedStatus = !item.status;
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/badges/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: updatedStatus })
+      });
+      setItems((prev) =>
+        prev.map((i) => i.id === item.id ? { ...i, status: updatedStatus } : i)
+      );
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const openCreate = () => {
@@ -86,39 +105,51 @@ const AdminBadges = () => {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    // Mock saving
-    setTimeout(() => {
+    try {
+      const payload = {
+        name: formData.name,
+        bg_color: formData.bg_color,
+        text_color: formData.text_color,
+        border_gradient: formData.border_gradient,
+        sort_order: formData.sort_order,
+        status: formData.status,
+      };
+
       if (editingItem) {
-        setItems(prev => prev.map(i => i.id === editingItem.id ? {
-          ...i,
-          name: formData.name,
-          bg_color: formData.bg_color,
-          text_color: formData.text_color,
-          border_gradient: formData.border_gradient,
-          sort_order: formData.sort_order,
-          status: formData.status,
-        } : i));
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/badges/${editingItem.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       } else {
-        setItems(prev => [...prev, {
-          id: Date.now(),
-          name: formData.name,
-          bg_color: formData.bg_color,
-          text_color: formData.text_color,
-          border_gradient: formData.border_gradient,
-          sort_order: formData.sort_order,
-          status: formData.status,
-        }]);
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/badges`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       }
-      setSaving(false);
+      await fetchItems();
       setModalOpen(false);
-    }, 500);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    setItems(prev => prev.filter(i => i.id !== deleteId));
-    setDeleteId(null);
+  const handleDelete = async () => {
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/badges/${deleteId}`, {
+        method: 'DELETE'
+      });
+      await fetchItems();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const BadgePreview = ({ name, bg, text, border }) => {

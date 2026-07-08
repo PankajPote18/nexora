@@ -50,22 +50,41 @@ const AdminMatureThemes = () => {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
 
-  useEffect(() => {
-    // Mock API call
-    setTimeout(() => {
-      setItems(initialThemes);
+  const fetchItems = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/master/mature-themes`);
+      const data = await res.json();
+      setItems(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
   }, []);
 
   const filtered = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggleStatus = (item) => {
-    setItems((prev) =>
-      prev.map((i) => i.id === item.id ? { ...i, status: !i.status } : i)
-    );
+  const toggleStatus = async (item) => {
+    try {
+      const updatedStatus = !item.status;
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/mature-themes/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: updatedStatus })
+      });
+      setItems((prev) =>
+        prev.map((i) => i.id === item.id ? { ...i, status: updatedStatus } : i)
+      );
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const openCreate = () => {
@@ -83,32 +102,47 @@ const AdminMatureThemes = () => {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    // Mock saving
-    setTimeout(() => {
+    try {
+      const payload = {
+        name: formData.name,
+        sort_order: formData.sort_order,
+      };
+
       if (editingItem) {
-        setItems(prev => prev.map(i => i.id === editingItem.id ? {
-          ...i,
-          name: formData.name,
-          sort_order: formData.sort_order,
-        } : i));
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/mature-themes/${editingItem.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       } else {
-        setItems(prev => [...prev, {
-          id: Date.now(),
-          name: formData.name,
-          sort_order: formData.sort_order,
-          status: true, // Default to true when creating based on typical UX, though not explicitly in the modal UI
-        }]);
+        await fetch(`${import.meta.env.VITE_API_URL}/api/master/mature-themes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, status: true })
+        });
       }
-      setSaving(false);
+      await fetchItems();
       setModalOpen(false);
-    }, 500);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    setItems(prev => prev.filter(i => i.id !== deleteId));
-    setDeleteId(null);
+  const handleDelete = async () => {
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL}/api/master/mature-themes/${deleteId}`, {
+        method: 'DELETE'
+      });
+      await fetchItems();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   return (

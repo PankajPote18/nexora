@@ -38,6 +38,7 @@ const AdminLayout = () => {
       icon: Home,
       children: [
         { name: 'Dashboard', path: '/admin' },
+        { name: 'Hero Banner Listing', path: '/admin/hero-banners' },
       ]
     },
     {
