@@ -54,9 +54,13 @@ const AdminTrays = () => {
       const updatedStatus = !tray.status;
       setTrays(trays.map(t => t.id === tray.id ? { ...t, status: updatedStatus } : t));
       
+      const token = localStorage.getItem('token') || 'dev-token';
       await fetch(`${import.meta.env.VITE_API_URL}/api/trays/${tray.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status: updatedStatus })
       });
     } catch (err) {
@@ -67,8 +71,12 @@ const AdminTrays = () => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this tray?')) {
       try {
+        const token = localStorage.getItem('token') || 'dev-token';
         await fetch(`${import.meta.env.VITE_API_URL}/api/trays/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
         fetchTrays();
       } catch (err) {

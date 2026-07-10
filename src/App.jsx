@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
@@ -11,7 +11,7 @@ import LoginPage from './pages/LoginPage';
 import OtpPage from './pages/OtpPage';
 import PlansPage from './pages/PlansPage';
 import AdminLayout from './pages/admin/AdminLayout';
-import AdminDashboard from './pages/admin/AdminDashboard';
+
 import AdminMovies from './pages/admin/AdminMovies';
 import AdminHeroBanners from './pages/admin/AdminHeroBanners';
 import AdminTrays from './pages/admin/AdminTrays';
@@ -43,7 +43,7 @@ function App() {
 
           {/* Admin Routes - Standalone Layout */}
           <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
+            <Route index element={<Navigate to="hero-banners" replace />} />
             <Route path="movies" element={<AdminMovies />} />
             <Route path="hero-banners" element={<AdminHeroBanners />} />
             <Route path="trays" element={<AdminTrays />} />

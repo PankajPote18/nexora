@@ -37,7 +37,7 @@ const AdminLayout = () => {
       name: 'Home',
       icon: Home,
       children: [
-        { name: 'Dashboard', path: '/admin' },
+
         { name: 'Hero Banner Listing', path: '/admin/hero-banners' },
         { name: 'Tray Listing', path: '/admin/trays' },
       ]
@@ -62,7 +62,6 @@ const AdminLayout = () => {
       children: [
         { name: 'Menu Settings', path: '/admin/settings' },
         { name: 'Pages', path: '/admin/pages' },
-        { name: 'About Us', path: '/admin/about-us' },
       ]
     }
   ];
@@ -109,11 +108,10 @@ const AdminLayout = () => {
               <div key={category.name} className="pb-1">
                 <button
                   onClick={() => toggleMenu(category.name)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
-                    isActive
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-medium ${isActive
                       ? 'bg-[#5a6ef7] text-white shadow-lg shadow-indigo-500/20'
                       : 'text-gray-400 hover:bg-[#1e2638] hover:text-white'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <category.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
@@ -131,11 +129,10 @@ const AdminLayout = () => {
                           key={child.name}
                           to={child.path}
                           onClick={() => setMobileMenuOpen(false)}
-                          className={`flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ml-2 ${
-                            isChildActive
+                          className={`flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ml-2 ${isChildActive
                               ? 'text-[#00E5FF]'
                               : 'text-gray-400 hover:text-white hover:bg-[#1e2638]'
-                          }`}
+                            }`}
                         >
                           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isChildActive ? 'bg-[#00E5FF]' : 'bg-gray-500'}`}></div>
                           <span>{child.name}</span>

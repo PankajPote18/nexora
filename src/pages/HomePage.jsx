@@ -43,10 +43,10 @@ const HomePage = () => {
       try {
 
         const [categoriesRes, moviesRes, heroBannersRes, traysRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/categories`),
-          fetch(`${import.meta.env.VITE_API_URL}/api/movies`),
-          fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners`),
-          fetch(`${import.meta.env.VITE_API_URL}/api/trays`)
+          fetch(`${import.meta.env.VITE_API_URL}/api/categories`, { cache: 'no-store' }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/movies`, { cache: 'no-store' }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners`, { cache: 'no-store' }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/trays`, { cache: 'no-store' })
         ]);
 
 

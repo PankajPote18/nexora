@@ -54,7 +54,13 @@ const AdminMovies = () => {
   }, []);
 
   const handleDeleteConfirm = () => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/movies/${deleteId}`, { method: 'DELETE' })
+    const token = localStorage.getItem('token') || 'dev-token';
+    fetch(`${import.meta.env.VITE_API_URL}/api/movies/${deleteId}`, { 
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
       .then(() => {
         setDeleteId(null);
         fetchMovies();

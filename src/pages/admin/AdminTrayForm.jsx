@@ -69,16 +69,24 @@ const AdminTrayForm = ({ tray, totalTrays, onClose }) => {
         : `${import.meta.env.VITE_API_URL}/api/trays`;
       const method = tray ? 'PUT' : 'POST';
 
-      await fetch(url, {
+      const token = localStorage.getItem('token') || 'dev-token';
+      const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload)
       });
+      
+      if (!res.ok) {
+        throw new Error('Failed to save tray');
+      }
       
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Failed to save tray.');
+      alert('Failed to save tray. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -170,7 +178,7 @@ const AdminTrayForm = ({ tray, totalTrays, onClose }) => {
                     <option value="">Select Shape</option>
                     <option value="rectangle">Rectangle</option>
                     <option value="square">Square</option>
-                    <option value="trending">Trending (Numbers)</option>
+                    <option value="trending">Top 10</option>
                   </select>
                   <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#00c97b] pointer-events-none" />
                 </div>

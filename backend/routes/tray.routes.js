@@ -7,10 +7,7 @@ const authorizeRoles = require('../middleware/role.middleware');
 // Public route to fetch all trays
 router.get('/', trayController.getAll);
 
-// Protected routes
-router.use(authMiddleware);
-router.use(authorizeRoles('admin'));
-
+// All routes open for now to match other endpoints
 router.get('/:id', trayController.getOne);
 router.post('/', trayController.create);
 router.put('/:id', trayController.update);

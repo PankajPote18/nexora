@@ -56,9 +56,13 @@ const AdminHeroBanners = () => {
   const toggleStatus = async (banner) => {
     try {
       const updatedStatus = !banner.status;
+      const token = localStorage.getItem('token') || 'dev-token';
       await fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners/${banner.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status: updatedStatus })
       });
       setBanners((prev) =>
@@ -72,8 +76,12 @@ const AdminHeroBanners = () => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this hero banner?')) {
       try {
+        const token = localStorage.getItem('token') || 'dev-token';
         await fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
         fetchBanners();
       } catch (error) {
