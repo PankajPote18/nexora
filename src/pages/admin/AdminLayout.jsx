@@ -39,6 +39,7 @@ const AdminLayout = () => {
       children: [
         { name: 'Dashboard', path: '/admin' },
         { name: 'Hero Banner Listing', path: '/admin/hero-banners' },
+        { name: 'Tray Listing', path: '/admin/trays' },
       ]
     },
     {

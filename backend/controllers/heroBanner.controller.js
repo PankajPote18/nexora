@@ -44,8 +44,18 @@ exports.remove = async (req, res) => {
     try {
         const banner = await HeroBanner.findByPk(req.params.id);
         if (!banner) return res.status(404).json({ message: 'Hero banner not found' });
+        
         await banner.destroy();
-        res.json({ message: 'Hero banner deleted' });
+        
+        // Re-sequence remaining banners so there are no gaps
+        const remainingBanners = await HeroBanner.findAll({ order: [['sorting_position', 'ASC']] });
+        for (let i = 0; i < remainingBanners.length; i++) {
+            if (remainingBanners[i].sorting_position !== i + 1) {
+                await remainingBanners[i].update({ sorting_position: i + 1 });
+            }
+        }
+        
+        res.json({ message: 'Hero banner deleted and positions updated' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error deleting hero banner', error: err.message });

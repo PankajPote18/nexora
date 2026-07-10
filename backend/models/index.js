@@ -13,8 +13,11 @@ const AgeCertificate = require('./AgeCertificate');
 const MatureTheme = require('./MatureTheme');
 const Badge = require('./Badge');
 const Vendor = require('./Vendor');
+const Tray = require('./Tray');
 
 // Define Relationships here if needed in the future
+HeroBanner.belongsTo(Movie, { foreignKey: 'show_id', as: 'show' });
+Movie.hasMany(HeroBanner, { foreignKey: 'show_id' });
 
 module.exports = {
     sequelize,
@@ -30,5 +33,6 @@ module.exports = {
     MatureTheme,
     Badge,
     Vendor,
-    HeroBanner
+    HeroBanner,
+    Tray
 };

@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 
-const AdminHeroBannerForm = ({ banner, onClose }) => {
+const AdminHeroBannerForm = ({ banner, totalBanners, onClose }) => {
+  // If it's a new banner, the sorting options should include the next available number.
+  // If editing an existing banner, the sorting options should be up to the current total.
+  const maxSorting = banner ? Math.max(totalBanners, 1) : totalBanners + 1;
+  const sortingOptions = Array.from({ length: maxSorting }, (_, i) => i + 1);
+
   const [formData, setFormData] = useState({
     title: banner?.title || '',
     show_id: banner?.show_id || '',
-    sorting_position: banner?.sorting_position || 1,
+    sorting_position: banner?.sorting_position || maxSorting,
     image: banner?.image || '',
   });
 
@@ -67,7 +72,7 @@ const AdminHeroBannerForm = ({ banner, onClose }) => {
           const uploaded = await uploadRes.json();
           if (uploaded.files && uploaded.files.banner) {
              // Mocking the real url for now since it's local
-             finalImageUrl = `/${uploaded.files.banner}`;
+             finalImageUrl = `${import.meta.env.VITE_API_URL}/${uploaded.files.banner}`;
           }
         }
       }
@@ -76,7 +81,7 @@ const AdminHeroBannerForm = ({ banner, onClose }) => {
         title: formData.title,
         show_id: formData.show_id,
         sorting_position: parseInt(formData.sorting_position, 10),
-        image: finalImageUrl || 'https://via.placeholder.com/1200x600'
+        image: finalImageUrl || 'https://placehold.co/1200x600'
       };
 
       const url = banner
@@ -154,16 +159,20 @@ const AdminHeroBannerForm = ({ banner, onClose }) => {
             <label className="block text-sm font-medium text-gray-400 mb-2">
               Sorting Position <span className="text-red-500">*</span>
             </label>
-            <input
-              type="number"
-              name="sorting_position"
-              value={formData.sorting_position}
-              onChange={handleChange}
-              required
-              min="1"
-              className="w-full bg-[#1c2333] border border-gray-700 rounded-lg py-2.5 px-4 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 transition-colors"
-              placeholder="Enter sorting position"
-            />
+            <div className="relative">
+              <select
+                name="sorting_position"
+                value={formData.sorting_position}
+                onChange={handleChange}
+                required
+                className="w-full bg-[#1c2333] border border-gray-700 rounded-lg py-2.5 px-4 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 appearance-none transition-colors"
+              >
+                {sortingOptions.map(num => (
+                  <option key={num} value={num}>{num}</option>
+                ))}
+              </select>
+              <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#00c97b] pointer-events-none" />
+            </div>
           </div>
 
           <div>

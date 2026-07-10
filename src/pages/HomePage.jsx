@@ -7,23 +7,9 @@ import MovieRow from '../components/MovieRow';
 const HomePage = () => {
 
   const [data, setData] = useState({
-
     hero: [],
-
     continueWatching: [],
-
-    trending: [],
-
-    movies: [],
-
-    webseries: [],
-
-    topHollywood: [],
-
-    topBollywood: [],
-
-    recentlyAdded: []
-
+    trays: []
   });
 
   const [loading, setLoading] = useState(true);
@@ -56,12 +42,11 @@ const HomePage = () => {
 
       try {
 
-        const [categoriesRes, moviesRes] = await Promise.all([
-
+        const [categoriesRes, moviesRes, heroBannersRes, traysRes] = await Promise.all([
           fetch(`${import.meta.env.VITE_API_URL}/api/categories`),
-
-          fetch(`${import.meta.env.VITE_API_URL}/api/movies`)
-
+          fetch(`${import.meta.env.VITE_API_URL}/api/movies`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/trays`)
         ]);
 
 
@@ -84,23 +69,32 @@ const HomePage = () => {
 
         ];
 
-        const heroMovies = movies.filter(m => m.category_id === 'hero').map((movie, index) => ({
+        const heroBanners = await heroBannersRes.json();
+        
+        let finalHero = [];
+        if (Array.isArray(heroBanners) && heroBanners.length > 0) {
+          finalHero = heroBanners
+            .filter(b => b.status === true)
+            .map(b => ({
+              id: b.show_id,
+              title: b.title,
+              backdropUrl: b.image,
+              posterUrl: b.image
+            }));
+        }
 
-          ...movie,
-
-          backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
-
-        }));
-
-        // A fallback if no specific hero movies are seeded
-
-        const finalHero = heroMovies.length > 0 ? heroMovies : movies.slice(0, 5).map((movie, index) => ({
-
-          ...movie,
-
-          backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
-
-        }));
+        // Fallback if no specific hero banners are found or active
+        if (finalHero.length === 0) {
+          const fallbackHeroMovies = movies.filter(m => m.category_id === 'hero').map((movie, index) => ({
+            ...movie,
+            backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
+          }));
+          
+          finalHero = fallbackHeroMovies.length > 0 ? fallbackHeroMovies : movies.slice(0, 5).map((movie, index) => ({
+            ...movie,
+            backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
+          }));
+        }
 
         // 3. Continue Watching (IDs 11, 16, 17, 18, 19)
 
@@ -136,94 +130,27 @@ const HomePage = () => {
 
         }
 
-        // 4. Trending Now (1-10) - Top 10 sorted by rating desc
-
-        const trending = [...movies]
-
-          .sort((a, b) => b.rating - a.rating)
-
-          .slice(0, 10);
-
-        // Heuristic function for Bollywood
-
-        const isBollywood = (m) => {
-
-          const bollywoodActors = ["Kapoor", "Dimri", "Tiwary", "Varma", "Devgn", "Bachchan", "Singh", "Kasturia", "Parihar", "Vijay", "Shahid", "Amitabh", "Ajay", "Rao", "Ayushmann", "Tripathi", "Pankaj", "Manoj", "Bhatt", "Kaushal", "Ranbir", "Alia", "Deepika"];
-
-          const castStr = Array.isArray(m.cast) ? m.cast.join(" ") : typeof m.cast === 'string' ? m.cast : "";
-
-          const titleStr = (m.title || "").toLowerCase();
-
-
-
-          return bollywoodActors.some(name => castStr.includes(name)) ||
-
-            titleStr.includes("romeo") ||
-
-            titleStr.includes("matka") ||
-
-            titleStr.includes("runway") ||
-
-            titleStr.includes("aspirants") ||
-
-            (parseInt(m.id) % 3 === 1 && m.id > 10);
-
-        };
-
-        // 5. Movies (duration contains h or min, or isMovie condition)
-
-        const allMoviesList = movies.filter(m => {
-
-          const durationStr = (m.duration || "").toLowerCase();
-
-          return durationStr.includes('h') || durationStr.includes('min') || durationStr.includes('hr');
-
-        });
-
-        // 6. Webseries (duration contains Season or Seasons or Episode)
-
-        const allWebseriesList = movies.filter(m => {
-
-          const durationStr = (m.duration || "").toLowerCase();
-
-          return durationStr.includes('season') || durationStr.includes('seasons') || durationStr.includes('ep') || durationStr.includes('series');
-
-        });
-
-        // 7. Top Hollywood (is not Bollywood)
-
-        const topHollywood = movies.filter(m => !isBollywood(m)).slice(0, 12);
-
-        // 8. Top Bollywood
-
-        const topBollywood = movies.filter(m => isBollywood(m)).slice(0, 12);
-
-        // 9. Recently Added (sorted by year desc)
-
-        const recentlyAdded = [...movies]
-
-          .sort((a, b) => b.year - a.year)
-
-          .slice(0, 12);
+        // Process Dynamic Trays from API
+        const traysData = await traysRes.json();
+        
+        let dynamicTrays = [];
+        if (Array.isArray(traysData) && traysData.length > 0) {
+            dynamicTrays = traysData
+                .filter(t => t.status === true)
+                // sorting_position should already be sorted from backend, but ensuring it
+                .sort((a, b) => a.sorting_position - b.sorting_position)
+                .map(tray => {
+                    const trayMovies = (tray.shows || [])
+                        .map(id => movies.find(m => String(m.id) === String(id)))
+                        .filter(m => m !== undefined);
+                    return { ...tray, movies: trayMovies };
+                });
+        }
 
         const finalData = {
-
           hero: finalHero,
-
           continueWatching,
-
-          trending,
-
-          movies: allMoviesList.slice(0, 12),
-
-          webseries: allWebseriesList.length > 0 ? allWebseriesList.slice(0, 12) : movies.filter(m => m.id % 2 !== 0).slice(0, 12),
-
-          topHollywood: topHollywood.length > 0 ? topHollywood : movies.slice(0, 12),
-
-          topBollywood: topBollywood.length > 0 ? topBollywood : movies.slice(0, 12),
-
-          recentlyAdded
-
+          trays: dynamicTrays
         };
 
         setData(finalData);
@@ -255,18 +182,15 @@ const HomePage = () => {
       {/* Dynamic Rows aligned tight to hero without overlapping content */}
       <div className="flex flex-col gap-y-4 md:gap-y-6 relative z-20 pb-12 mt-4 md:mt-6">
         <MovieRow title="Continue Watching" movies={data.continueWatching} cardType="rectangle" />
-
-        <MovieRow title="Trending Now" movies={data.trending} cardType="trending" />
-
-        <MovieRow title="Movies" movies={data.movies} cardType="square" />
-
-        <MovieRow title="Webseries" movies={data.webseries} cardType="square" />
-
-        <MovieRow title="Top Hollywood" movies={data.topHollywood} cardType="square" />
-
-        <MovieRow title="Top Bollywood" movies={data.topBollywood} cardType="square" />
-
-        <MovieRow title="Recently Added" movies={data.recentlyAdded} cardType="square" />
+        
+        {data.trays?.map((tray) => (
+            <MovieRow 
+                key={tray.id} 
+                title={tray.title} 
+                movies={tray.movies} 
+                cardType={tray.shape} 
+            />
+        ))}
 
       </div>
 

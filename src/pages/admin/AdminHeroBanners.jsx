@@ -145,7 +145,7 @@ const AdminHeroBanners = () => {
                     <td className="px-6 py-4 text-gray-400">{banner.show?.title || 'Unknown Show'}</td>
                     <td className="px-6 py-4 text-center text-gray-400">{banner.sorting_position}</td>
                     <td className="px-6 py-4">
-                      <img src={banner.image || 'https://via.placeholder.com/60x80'} alt="thumbnail" className="w-12 h-16 object-cover rounded-md border border-gray-700 shadow-md" />
+                      <img src={banner.image || 'https://placehold.co/60x80'} alt="thumbnail" className="w-12 h-16 object-cover rounded-md border border-gray-700 shadow-md" />
                     </td>
                     <td className="px-6 py-4">
                       <CustomToggle isOn={banner.status} onToggle={() => toggleStatus(banner)} />
@@ -185,6 +185,7 @@ const AdminHeroBanners = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <AdminHeroBannerForm
             banner={editingBanner}
+            totalBanners={banners.length}
             onClose={() => { setShowForm(false); fetchBanners(); }}
           />
         </div>

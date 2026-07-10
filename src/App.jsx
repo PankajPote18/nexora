@@ -14,6 +14,7 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminMovies from './pages/admin/AdminMovies';
 import AdminHeroBanners from './pages/admin/AdminHeroBanners';
+import AdminTrays from './pages/admin/AdminTrays';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 import AdminAboutUs from './pages/admin/AdminAboutUs';
 import AdminSettings from './pages/admin/AdminSettings';
@@ -45,6 +46,7 @@ function App() {
             <Route index element={<AdminDashboard />} />
             <Route path="movies" element={<AdminMovies />} />
             <Route path="hero-banners" element={<AdminHeroBanners />} />
+            <Route path="trays" element={<AdminTrays />} />
             <Route path="users" element={<div className="text-xl p-8 text-white">Users Management Coming Soon</div>} />
             <Route path="subscriptions" element={<AdminSubscriptions />} />
             <Route path="settings" element={<AdminSettings />} />
