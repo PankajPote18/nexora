@@ -68,10 +68,18 @@ const seedMasterData = async () => {
     }
 };
 
-// Test DB Connection and Start Server
+// Test DB Connection, Sync Schema, Seed Data, and Start Server
 sequelize.authenticate()
-    .then(() => {
+    .then(async () => {
         console.log('Database connection has been established successfully.');
+        
+        // Ensure all tables are created based on our Models
+        await sequelize.sync({ alter: true });
+        console.log('Database synchronized.');
+
+        // Seed initial data for Badges, Themes, etc. if empty
+        await seedMasterData();
+        console.log('Master data seeded.');
         
         app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
