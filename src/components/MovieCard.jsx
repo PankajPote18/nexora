@@ -2,8 +2,8 @@ import { Link } from 'react-router-dom';
 import { Play, MoreVertical } from 'lucide-react';
 
 const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
-  // Layout 1: Continue Watching (Rectangle aspect-video)
-  if (cardType === 'rectangle') {
+  // Layout 1: Continue Watching (Rectangle aspect-video with Progress Bar)
+  if (cardType === 'continue_watching') {
     const mockProgress = movie.progress || (20 + (movie.id * 17) % 65);
     const mockLeftTime = movie.leftTime || `${12 + (movie.id * 9) % 38}m left`;
 
@@ -55,6 +55,42 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
           >
             <MoreVertical size={14} />
           </button>
+        </div>
+      </Link>
+    );
+  }
+
+  // Layout 1B: Standard Rectangle (aspect-video WITHOUT progress bar)
+  if (cardType === 'rectangle') {
+    return (
+      <Link to={`/movie/${movie.id}`} className="block w-full group relative">
+        <div
+          className="relative aspect-video rounded-xl overflow-hidden bg-gray-900 border border-white/5 transition-transform duration-300 ease-out shadow-md group-hover:scale-[1.04] group-hover:z-20 group-hover:border-[#00A8E1]/40 group-hover:shadow-[0_12px_24px_rgba(0,0,0,0.8),0_0_15px_rgba(0,168,225,0.15)]"
+        >
+          <img
+            src={movie.backdropUrl || movie.posterUrl}
+            alt={movie.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=640&auto=format&fit=crop';
+            }}
+          />
+
+          {/* Title Overlay on Hover */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-0 group-hover:opacity-100 flex flex-col justify-end p-3 transition-opacity duration-300 z-20">
+            <span className="text-[#00A8E1] text-[9px] font-bold uppercase tracking-wider mb-0.5">
+              {movie.category || movie.genre || 'SHOW'}
+            </span>
+            <h4 className="text-xs font-bold text-white leading-tight line-clamp-2">
+              {movie.title}
+            </h4>
+          </div>
+        </div>
+
+        <div className="mt-1.5 px-1 text-gray-300 font-semibold text-[11px] md:text-[12px] truncate group-hover:text-[#00A8E1] transition-colors">
+          {movie.title}
         </div>
       </Link>
     );
