@@ -1,5 +1,5 @@
 // Central API base — change this once if your backend URL changes
-const BASE = 'https://nexora-backend1.onrender.com/api';
+const BASE = `${import.meta.env.VITE_API_URL}/api`;
 
 const get = (path) =>
   fetch(`${BASE}${path}`).then((r) => {
@@ -80,4 +80,27 @@ export const settingsPagesApi = {
   create: (data) => post('/settings-pages', data),
   update: (id, data) => put(`/settings-pages/${id}`, data),
   remove: (id) => del(`/settings-pages/${id}`),
+};
+
+// ── Payments (PayU UPI Intent S2S) ─────────────────────────────────────────
+// Uses its own error handling (vs. the shared post/get helpers above) so the
+// backend's validation message (e.g. "Invalid email address") reaches the UI
+// instead of a generic "API error 400".
+const paymentRequest = async (path, options) => {
+  const res = await fetch(`${BASE}${path}`, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || `API error ${res.status}`);
+  }
+  return data;
+};
+
+export const paymentsApi = {
+  create: (data) =>
+    paymentRequest('/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  getStatus: (txnid) => paymentRequest(`/payments/status/${txnid}`),
 };

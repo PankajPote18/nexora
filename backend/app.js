@@ -32,6 +32,7 @@ app.use('/api/upload', require('./routes/upload.routes'));
 app.use('/api/master', require('./routes/master.routes'));
 app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
 app.use('/api/trays', require('./routes/tray.routes'));
+app.use('/api/payments', require('./routes/payment.routes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {

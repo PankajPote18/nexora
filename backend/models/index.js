@@ -14,10 +14,16 @@ const MatureTheme = require('./MatureTheme');
 const Badge = require('./Badge');
 const Vendor = require('./Vendor');
 const Tray = require('./Tray');
+const Payment = require('./Payment');
 
 // Define Relationships here if needed in the future
 HeroBanner.belongsTo(Movie, { foreignKey: 'show_id', as: 'show' });
 Movie.hasMany(HeroBanner, { foreignKey: 'show_id' });
+
+Payment.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
+SubscriptionPlan.hasMany(Payment, { foreignKey: 'plan_id' });
+Payment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasMany(Payment, { foreignKey: 'user_id' });
 
 module.exports = {
     sequelize,
@@ -34,5 +40,6 @@ module.exports = {
     Badge,
     Vendor,
     HeroBanner,
-    Tray
+    Tray,
+    Payment
 };

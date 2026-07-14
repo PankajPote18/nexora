@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Environment files contain live secrets (DB credentials, JWT secret, PayU
+# merchant key/salt) and must never be committed.
+.env
+.env.*
+backend/.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
