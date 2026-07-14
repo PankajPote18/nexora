@@ -173,6 +173,8 @@ const PlansPage = () => {
 
                   <div
                     onClick={() => setSelectedPlan(plan.id)}
+                    data-testid={`plan-option-${plan.id}`}
+                    data-selected={selectedPlan === plan.id}
                     className={`relative overflow-hidden flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
                       selectedPlan === plan.id
                         ? 'border-[#00A8E1] bg-[#00A8E1]/5'
@@ -217,7 +219,11 @@ const PlansPage = () => {
 
             {/* Payment status card — success/failed/cancelled/timeout */}
             {(paymentPhase === 'success' || paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
-              <div className="mb-6 p-4 rounded-xl border border-gray-800 bg-[#0f1115] flex flex-col items-center text-center gap-2">
+              <div
+                data-testid="payment-status-card"
+                data-status={paymentPhase}
+                className="mb-6 p-4 rounded-xl border border-gray-800 bg-[#0f1115] flex flex-col items-center text-center gap-2"
+              >
                 {paymentPhase === 'success' && (
                   <>
                     <CheckCircle2 className="text-green-500" size={32} />
@@ -246,6 +252,7 @@ const PlansPage = () => {
                     <p className="text-gray-400 text-sm">This is taking longer than usual. Check back in a few minutes, or check now.</p>
                     <button
                       onClick={handleCheckStatusNow}
+                      data-testid="check-status-button"
                       className="mt-2 text-[#00A8E1] text-sm font-semibold hover:underline cursor-pointer"
                     >
                       Check status now
@@ -263,6 +270,7 @@ const PlansPage = () => {
                   placeholder="Full name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
+                  data-testid="contact-name-input"
                   className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
                 />
                 <input
@@ -270,6 +278,7 @@ const PlansPage = () => {
                   placeholder="Email address"
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
+                  data-testid="contact-email-input"
                   className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
                 />
                 <input
@@ -278,13 +287,14 @@ const PlansPage = () => {
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
                   maxLength="10"
+                  data-testid="contact-phone-input"
                   className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
                 />
               </div>
             )}
 
             {errorMsg && (
-              <p className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
+              <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
             )}
 
             {/* Pay Now / status button */}
@@ -292,6 +302,7 @@ const PlansPage = () => {
               <div className="flex flex-col items-center gap-3">
                 <button
                   disabled
+                  data-testid="awaiting-upi-indicator"
                   className="w-full py-4 bg-[#00A8E1]/60 text-white font-bold text-lg rounded-full shadow-lg flex items-center justify-center gap-2 cursor-not-allowed"
                 >
                   <Loader2 className="animate-spin" size={20} />
@@ -299,6 +310,7 @@ const PlansPage = () => {
                 </button>
                 <button
                   onClick={handleCheckStatusNow}
+                  data-testid="check-status-button"
                   className="text-[#00A8E1] text-sm font-semibold hover:underline cursor-pointer"
                 >
                   I've completed the payment — check status
@@ -307,6 +319,7 @@ const PlansPage = () => {
             ) : (paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout' || paymentPhase === 'error') ? (
               <button
                 onClick={resetPaymentFlow}
+                data-testid="try-again-button"
                 className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
               >
                 Try Again
@@ -315,6 +328,7 @@ const PlansPage = () => {
               <button
                 onClick={handlePayNow}
                 disabled={paymentPhase === 'creating'}
+                data-testid="pay-now-button"
                 className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >
                 {paymentPhase === 'creating' && <Loader2 className="animate-spin" size={20} />}

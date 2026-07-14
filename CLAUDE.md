@@ -267,7 +267,8 @@ No `.env.example` file exists in either directory — if adding new env vars, co
 - **Naming**: DB columns and Sequelize `tableName`s are `snake_case`; JS model attribute names mostly mirror the DB column (mostly `snake_case`, with a few `camelCase` exceptions like `Movie.posterUrl`/`backdropUrl`/`isNew`/`isTrending`/`isOriginal`/`ageRating` — this model is inconsistent internally, camelCase for display-ish fields, snake_case for structural ones).
 - **IDs**: see §10 — no single convention across resources; match whatever the specific model already does rather than introducing a new ID scheme.
 - **No TypeScript, no PropTypes, no runtime validation library** (no Zod/Joi/Yup) anywhere in either frontend or backend. Do not introduce one without discussing — it would be inconsistent with the rest of the codebase unless the user asks for it.
-- **No test suite**: `backend/package.json`'s `"test"` script is the default `echo "Error: no test specified" && exit 1` placeholder; no `*.test.js` files exist anywhere.
+- **Backend still has no test suite**: `backend/package.json`'s `"test"` script is the default `echo "Error: no test specified" && exit 1` placeholder.
+- **Frontend has a Playwright e2e suite** (`e2e/`, added alongside the PayU feature) — see §15. There's no unit/component test setup (no Vitest/Jest/RTL), only browser-driven e2e.
 
 ## 14. UI and Styling Rules
 
@@ -282,11 +283,15 @@ No `.env.example` file exists in either directory — if adding new env vars, co
 **Frontend** (run from repo root):
 ```
 npm install
-npm run dev       # vite dev server
-npm run build     # vite build -> dist/
-npm run preview   # preview the production build
-npm run lint      # eslint .
+npm run dev            # vite dev server
+npm run build          # vite build -> dist/
+npm run preview        # preview the production build
+npm run lint           # eslint .
+npm run test:e2e       # Playwright, mocked PayU responses (e2e/plans-payment.spec.js) — no backend required
+npm run test:e2e:live  # Playwright, real PayU sandbox + real DB writes (e2e/plans-payment.live.spec.js) — backend must be running locally first
+npm run test:e2e:report # opens the interactive HTML report (pass/fail, traces, screenshots-on-failure) from the last run
 ```
+Playwright tests assume the frontend (and, for `test:e2e:live`, the backend) are already running — there is deliberately no `webServer` auto-start in `playwright.config.js`, since backend boot alters the live DB schema (see §17) and that should stay an explicit action.
 
 **Backend** (run from `backend/`):
 ```

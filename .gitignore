@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Environment files contain live secrets (DB credentials, JWT secret, PayU
 # merchant key/salt) and must never be committed.
 .env
