@@ -9,6 +9,16 @@ import { plansApi, paymentsApi } from '../services/api';
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLLS = 45; // ~3 minutes
 
+// TEMPORARY: name of the dev-only ₹1 PayU test plan (see the "PayU Test
+// Mode" section below). Real customers must never see or select this — it's
+// filtered out of the customer-facing plan list by name everywhere below.
+// ASCII-only on purpose: the `subscription_plans` table isn't utf8mb4 (same
+// pre-existing collation issue CLAUDE.md documents for hero_banners/movies),
+// so a ₹ symbol here gets silently mangled to "?" on write — which would
+// break both this exact-match filter and the idempotent lookup below. The
+// button label still shows ₹1 to the user; that string is never stored.
+const TEST_PLAN_NAME = 'PayU Test Plan (Do Not Purchase)';
+
 const PlansPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -24,15 +34,26 @@ const PlansPage = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
+  // TEMPORARY: PayU Test Mode state — separate namespace from the real
+  // payment flow above so testing never interferes with a real in-flight
+  // purchase. Uses the exact same paymentsApi.create/getStatus calls.
+  const [testPaymentPhase, setTestPaymentPhase] = useState('idle'); // idle | creating | awaiting_upi | success | failed | cancelled | timeout | error
+  const [testTxnid, setTestTxnid] = useState(null);
+  const [testPaymentId, setTestPaymentId] = useState(null);
+  const [testErrorMsg, setTestErrorMsg] = useState('');
+
   useEffect(() => {
     // Fetch only active plans from backend
     plansApi
       .getAll(true)
       .then((data) => {
         setPlans(data);
-        // Pre-select the recommended plan, or fall back to the first active plan
-        const recommended = data.find((p) => p.is_recommended);
-        setSelectedPlan(recommended?.id ?? data[0]?.id ?? null);
+        // Pre-select the recommended plan, or fall back to the first active
+        // plan — excluding the temporary PayU test plan, which must never be
+        // a real customer's default (or any) selection.
+        const customerVisible = data.filter((p) => p.name !== TEST_PLAN_NAME);
+        const recommended = customerVisible.find((p) => p.is_recommended);
+        setSelectedPlan(recommended?.id ?? customerVisible[0]?.id ?? null);
       })
       .catch((err) => console.error('Plans fetch failed:', err))
       .finally(() => setLoading(false));
@@ -88,6 +109,33 @@ const PlansPage = () => {
     return () => clearInterval(interval);
   }, [paymentPhase, txnid]);
 
+  // TEMPORARY: identical polling mechanism to the real flow above, kept in
+  // its own state so it can never clobber a real payment's status.
+  useEffect(() => {
+    if (testPaymentPhase !== 'awaiting_upi' || !testTxnid) return undefined;
+
+    let pollCount = 0;
+    const interval = setInterval(async () => {
+      pollCount += 1;
+      try {
+        const res = await paymentsApi.getStatus(testTxnid);
+        if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
+          clearInterval(interval);
+          setTestPaymentPhase(res.status);
+          return;
+        }
+      } catch (err) {
+        console.error('Test payment status poll failed:', err);
+      }
+      if (pollCount >= MAX_POLLS) {
+        clearInterval(interval);
+        setTestPaymentPhase('timeout');
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [testPaymentPhase, testTxnid]);
+
   // Compute discount percentage for display
   const discountPercent = (plan) => {
     if (!plan.original_price || plan.original_price === 0) return '0 %';
@@ -142,6 +190,73 @@ const PlansPage = () => {
     setErrorMsg('');
   };
 
+  // TEMPORARY: PayU Test Mode handlers.
+  //
+  // Finds the existing ₹1 test plan, or creates it via the same
+  // POST /api/subscription-plans endpoint AdminSubscriptions.jsx already
+  // uses — no new backend code. This exists only because createPayment
+  // intentionally never accepts a client-supplied amount (it always derives
+  // the charge from a real SubscriptionPlan row), so a real ₹1 transaction
+  // needs a real ₹1 plan to reference.
+  const ensureTestPlan = async () => {
+    const existing = plans.find((p) => p.name === TEST_PLAN_NAME);
+    if (existing) return existing;
+
+    const created = await plansApi.create({
+      name: TEST_PLAN_NAME,
+      original_price: 1,
+      discounted_price: 1,
+      billing_cycle: 'Test',
+      number_of_days: 1,
+      sort_order: 999,
+      is_recommended: false,
+      status: true,
+    });
+    setPlans((prev) => [...prev, created]);
+    return created;
+  };
+
+  const handleTestPayNow = async () => {
+    setTestErrorMsg('');
+    setTestPaymentPhase('creating');
+    try {
+      const testPlan = await ensureTestPlan();
+      const res = await paymentsApi.create({
+        plan_id: testPlan.id,
+        customer_name: 'PayU Test User',
+        customer_email: 'payu-test@nexora.test',
+        customer_phone: customerPhone || '9999999999',
+      });
+      setTestPaymentId(res.paymentId);
+      setTestTxnid(res.txnid);
+      setTestPaymentPhase('awaiting_upi');
+      window.location.href = res.upiIntentUrl;
+    } catch (err) {
+      console.error('Test payment creation failed:', err);
+      setTestErrorMsg(err.message || 'Something went wrong starting the test payment.');
+      setTestPaymentPhase('error');
+    }
+  };
+
+  const handleTestCheckStatusNow = async () => {
+    if (!testTxnid) return;
+    try {
+      const res = await paymentsApi.getStatus(testTxnid);
+      if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
+        setTestPaymentPhase(res.status);
+      }
+    } catch (err) {
+      console.error('Manual test status check failed:', err);
+    }
+  };
+
+  const resetTestPaymentFlow = () => {
+    setTestPaymentPhase('idle');
+    setTestTxnid(null);
+    setTestPaymentId(null);
+    setTestErrorMsg('');
+  };
+
   return (
     <div className="w-full bg-bg-dark pt-24 pb-12 flex flex-col items-center px-4 min-h-[calc(100vh-80px)]">
       <div className="w-full max-w-md bg-black border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden mt-8">
@@ -162,7 +277,7 @@ const PlansPage = () => {
         ) : (
           <>
             <div className="space-y-4 mb-8">
-              {plans.map((plan) => (
+              {plans.filter((p) => p.name !== TEST_PLAN_NAME).map((plan) => (
                 <div className="relative" key={plan.id}>
                   {/* Recommended Badge */}
                   {plan.is_recommended && (
@@ -335,6 +450,91 @@ const PlansPage = () => {
                 {paymentPhase === 'creating' ? 'Starting payment…' : paymentPhase === 'need_details' ? 'Continue to Pay' : 'Pay Now'}
               </button>
             )}
+
+            {/* ============================================================
+                TEMPORARY: PayU Test Mode — remove this whole block once
+                sandbox testing is done. Reuses paymentsApi.create/getStatus
+                exactly as the real flow above; no separate payment system.
+                See CLAUDE.md §9.
+                ============================================================ */}
+            <div className="mt-8 pt-6 border-t border-dashed border-yellow-700/40">
+              <span className="text-yellow-500 text-[11px] font-bold uppercase tracking-widest">
+                PayU Test Mode
+              </span>
+              <p className="text-gray-500 text-xs mt-1 mb-4">
+                Test transaction only. No real payment will be processed.
+              </p>
+
+              <div
+                data-testid="payu-test-section"
+                data-status={testPaymentPhase}
+                className="p-4 rounded-xl border border-yellow-700/30 bg-yellow-900/5"
+              >
+                <p className="text-white font-bold text-sm mb-3">PayU Test Payment</p>
+
+                {testPaymentPhase === 'awaiting_upi' ? (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      disabled
+                      className="w-full py-3 bg-yellow-700/40 text-white font-bold text-sm rounded-full flex items-center justify-center gap-2 cursor-not-allowed"
+                    >
+                      <Loader2 className="animate-spin" size={16} />
+                      Waiting for UPI confirmation…
+                    </button>
+                    <button
+                      onClick={handleTestCheckStatusNow}
+                      data-testid="payu-test-check-status-button"
+                      className="text-yellow-500 text-xs font-semibold hover:underline cursor-pointer self-start"
+                    >
+                      Check status now
+                    </button>
+                  </div>
+                ) : (testPaymentPhase === 'success' || testPaymentPhase === 'failed' || testPaymentPhase === 'cancelled' || testPaymentPhase === 'timeout') ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-semibold text-white">
+                      {testPaymentPhase === 'success' && 'Payment Successful'}
+                      {testPaymentPhase === 'failed' && 'Payment Failed'}
+                      {testPaymentPhase === 'cancelled' && 'Payment Cancelled'}
+                      {testPaymentPhase === 'timeout' && 'Payment Pending (timed out waiting)'}
+                    </p>
+                    <button
+                      onClick={resetTestPaymentFlow}
+                      data-testid="payu-test-reset-button"
+                      className="w-full py-3 bg-yellow-700/40 hover:bg-yellow-700/60 text-white font-bold text-sm rounded-full transition-colors cursor-pointer"
+                    >
+                      Run Another Test Payment
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleTestPayNow}
+                      disabled={testPaymentPhase === 'creating'}
+                      data-testid="payu-test-pay-button"
+                      className="w-full py-3 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-sm rounded-full transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {testPaymentPhase === 'creating' && <Loader2 className="animate-spin" size={16} />}
+                      {testPaymentPhase === 'creating' ? 'Starting test payment…' : 'Pay ₹1 via UPI'}
+                    </button>
+                    {testErrorMsg && (
+                      <p data-testid="payu-test-error-message" className="text-red-500 text-xs mt-2">{testErrorMsg}</p>
+                    )}
+                  </>
+                )}
+
+                {(testPaymentId || testTxnid) && (
+                  <div className="mt-3 pt-3 border-t border-yellow-700/20 text-[11px] text-gray-400 space-y-1">
+                    {testPaymentId && (
+                      <p data-testid="payu-test-payment-id">Internal payment ID: <span className="text-gray-300">{testPaymentId}</span></p>
+                    )}
+                    {testTxnid && (
+                      <p data-testid="payu-test-txnid">Transaction ID: <span className="text-gray-300">{testTxnid}</span></p>
+                    )}
+                    <p data-testid="payu-test-status">Current status: <span className="text-gray-300">{testPaymentPhase}</span></p>
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>
