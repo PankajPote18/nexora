@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Check, X, Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { startResumableUpload, uploadSmallFile } from '../../services/tusUpload';
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button
@@ -15,13 +16,92 @@ const CustomToggle = ({ isOn, onToggle }) => (
   </button>
 );
 
+const initialUploadStatus = (url) => (
+  url
+    ? { status: 'done', progress: 100, fileName: url.split('/').pop(), error: '' }
+    : { status: 'idle', progress: 0, fileName: '', error: '' }
+);
+
+// Small, bounded files (image/subtitle) — uploaded via the existing
+// Express -> SFTP path (POST /api/upload). Shows a busy indicator while
+// uploading since these complete in well under a second.
+const SmallUploadField = ({ label, hint, accept, field, formField, uploads, onChange }) => {
+  const state = uploads[field];
+  return (
+    <div className="space-y-2">
+      <label className="text-sm text-gray-400">{label}</label>
+      <div className="flex items-center border border-gray-700 rounded bg-[#1a2234] overflow-hidden">
+        <label className="cursor-pointer bg-[#2a3449] hover:bg-[#3a4560] text-white px-4 py-3 text-sm font-medium transition-colors shrink-0">
+          Choose File
+          <input type="file" accept={accept} className="hidden" onChange={(e) => onChange(e, field, formField)} />
+        </label>
+        <span className="px-4 text-sm text-[#00E5FF] truncate">
+          {state.status === 'uploading' ? 'Uploading...' : (state.fileName || 'No file chosen')}
+        </span>
+      </div>
+      {state.status === 'error' && <p className="text-xs text-red-400">{state.error}</p>}
+      {state.status === 'done' && <p className="text-xs text-green-400">Uploaded</p>}
+      <p className="text-xs text-gray-500 pt-1">{hint}</p>
+    </div>
+  );
+};
+
+// Large files (movie/trailer) — resumable upload direct to the VPS via tus.
+// Shows real byte progress and supports pause/resume.
+const LargeUploadField = ({ label, hint, accept, field, formField, uploads, onChange, onPause, onResume }) => {
+  const state = uploads[field];
+  const isActive = state.status === 'uploading' || state.status === 'paused';
+  return (
+    <div className="space-y-2">
+      <label className="text-sm text-gray-400">{label}</label>
+      <div className="flex items-center border border-gray-700 rounded bg-[#1a2234] overflow-hidden">
+        <label className="cursor-pointer bg-[#2a3449] hover:bg-[#3a4560] text-white px-4 py-3 text-sm font-medium transition-colors shrink-0">
+          Choose File
+          <input type="file" accept={accept} className="hidden" onChange={(e) => onChange(e, field, formField)} />
+        </label>
+        <span className="px-4 text-sm text-[#00E5FF] truncate flex-1">
+          {state.fileName || 'No file chosen'}
+        </span>
+        {isActive && (
+          <button
+            type="button"
+            onClick={() => (state.status === 'uploading' ? onPause(field) : onResume(field))}
+            className="px-3 text-xs text-gray-300 hover:text-white shrink-0"
+          >
+            {state.status === 'uploading' ? 'Pause' : 'Resume'}
+          </button>
+        )}
+      </div>
+      {isActive && (
+        <div className="space-y-1">
+          <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full bg-[#4aa5ff] transition-all duration-300" style={{ width: `${state.progress}%` }} />
+          </div>
+          <p className="text-xs text-gray-400">{state.progress}% {state.status === 'paused' ? '(paused)' : 'uploaded'}</p>
+        </div>
+      )}
+      {state.status === 'error' && <p className="text-xs text-red-400">{state.error}</p>}
+      {state.status === 'done' && <p className="text-xs text-green-400">Uploaded</p>}
+      <p className="text-xs text-gray-500 pt-1">{hint}</p>
+    </div>
+  );
+};
+
 const AdminMovieForm = ({ movie, onClose }) => {
   const [formData, setFormData] = useState(movie || {
     title: '', sort_order: 1, ageRating: '', genres: '', language: '', matureTheme: '', vendor: '',
-    videoUrl: '', badge: '', status: true,
-    posterFile: null, backdropFile: null,
-    posterUrl: '', backdropUrl: ''
+    badge: '', status: true,
+    posterUrl: '', backdropUrl: '', videoUrl: '', trailerUrl: '', subtitleUrl: ''
   });
+
+  const [uploads, setUploads] = useState({
+    poster: initialUploadStatus(movie?.posterUrl),
+    thumbnail: initialUploadStatus(movie?.backdropUrl),
+    subtitle: initialUploadStatus(movie?.subtitleUrl),
+    movie: initialUploadStatus(movie?.videoUrl),
+    trailer: initialUploadStatus(movie?.trailerUrl),
+  });
+  const uploadRefs = useRef({});
 
   const [episodes, setEpisodes] = useState(
     movie?.episodes || ['']
@@ -62,14 +142,21 @@ const AdminMovieForm = ({ movie, onClose }) => {
     fetchMasterData();
   }, []);
 
+  const updateUpload = (field, patch) => {
+    setUploads(prev => ({ ...prev, [field]: { ...prev[field], ...patch } }));
+  };
+
+  const isAnyUploadInProgress = Object.values(uploads).some(u => u.status === 'uploading');
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isAnyUploadInProgress) return;
+
     const url = movie
       ? `${import.meta.env.VITE_API_URL}/api/movies/${movie.id}`
       : `${import.meta.env.VITE_API_URL}/api/movies`;
     const method = movie ? 'PUT' : 'POST';
 
-    // Simple JSON payload for now
     const payload = {
       ...formData,
       genres: typeof formData.genres === 'string' ? formData.genres.split(',').map(s => s.trim()) : formData.genres,
@@ -88,14 +175,56 @@ const AdminMovieForm = ({ movie, onClose }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = (e, type) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setFormData(prev => ({
-        ...prev,
-        [type]: file,
-      }));
+  // banner/poster/thumbnail/subtitle — small, bounded files via /api/upload
+  const handleSmallFileChange = async (e, field, formField) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    updateUpload(field, { status: 'uploading', progress: 0, fileName: file.name, error: '' });
+    try {
+      const url = await uploadSmallFile(field, file);
+      setFormData(prev => ({ ...prev, [formField]: url }));
+      updateUpload(field, { status: 'done', progress: 100 });
+    } catch (err) {
+      updateUpload(field, { status: 'error', error: err.message });
     }
+  };
+
+  // movie/trailer — large, resumable uploads direct to the VPS via tus
+  const handleLargeFileChange = async (e, field, formField) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const adminToken = localStorage.getItem('adminAuthToken');
+    updateUpload(field, { status: 'uploading', progress: 0, fileName: file.name, error: '' });
+
+    try {
+      const instance = await startResumableUpload({
+        file,
+        fieldType: field,
+        movieId: movie?.id,
+        adminToken,
+        onProgress: (sent, total) => updateUpload(field, { progress: Math.round((sent / total) * 100) }),
+        onSuccess: (url) => {
+          setFormData(prev => ({ ...prev, [formField]: url }));
+          updateUpload(field, { status: 'done', progress: 100 });
+        },
+        onError: (err) => updateUpload(field, { status: 'error', error: err.message || 'Upload failed' }),
+      });
+      uploadRefs.current[field] = instance;
+    } catch (err) {
+      updateUpload(field, { status: 'error', error: err.message || 'Upload failed' });
+    }
+  };
+
+  const pauseUpload = (field) => {
+    uploadRefs.current[field]?.abort();
+    updateUpload(field, { status: 'paused' });
+  };
+
+  const resumeUpload = (field) => {
+    updateUpload(field, { status: 'uploading' });
+    uploadRefs.current[field]?.start();
   };
 
   const handleEpisodeChange = (index, value) => {
@@ -121,9 +250,11 @@ const AdminMovieForm = ({ movie, onClose }) => {
     setEpisodes(newEpisodes);
   };
 
+  const hasAdminToken = !!localStorage.getItem('adminAuthToken');
+
   return (
     <div className="w-full h-auto bg-[#121826] rounded-xl flex flex-col font-sans mb-8">
-      
+
       {/* Header */}
       <div className="flex justify-between items-center p-6 border-b border-gray-800/50">
         <h2 className="text-xl md:text-2xl font-normal text-white uppercase tracking-wide">
@@ -138,10 +269,17 @@ const AdminMovieForm = ({ movie, onClose }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-        
+
+        {!hasAdminToken && (
+          <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-4 py-3">
+            You're not logged in as an admin — Movie Video and Trailer uploads require it.{' '}
+            <a href="/admin/login" className="underline">Log in here</a> (poster/thumbnail/subtitle uploads don't need this).
+          </div>
+        )}
+
         {/* Top Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
+
           <div className="space-y-2">
             <label className="text-sm text-gray-400">Show Name <span className="text-red-500">*</span></label>
             <input required name="title" value={formData.title} onChange={handleChange} placeholder="Show Name" className="w-full bg-[#1a2234] border border-gray-700 text-white rounded px-4 py-3 outline-none focus:border-[#4aa5ff]" />
@@ -203,39 +341,6 @@ const AdminMovieForm = ({ movie, onClose }) => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm text-gray-400">Trailer URL <span className="text-red-500">*</span></label>
-            <input required name="videoUrl" value={formData.videoUrl} onChange={handleChange} placeholder="https://example.com/trailer" className="w-full bg-[#1a2234] border border-gray-700 text-white rounded px-4 py-3 outline-none focus:border-[#4aa5ff]" />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm text-gray-400">Upload Horizontal Poster Image <span className="text-red-500">*</span></label>
-            <div className="flex items-center border border-gray-700 rounded bg-[#1a2234] overflow-hidden">
-              <label className="cursor-pointer bg-[#2a3449] hover:bg-[#3a4560] text-white px-4 py-3 text-sm font-medium transition-colors shrink-0">
-                Choose File
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'backdropFile')} />
-              </label>
-              <span className="px-4 text-sm text-[#00E5FF] truncate">
-                {formData.backdropFile ? formData.backdropFile.name : 'No file chosen'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 pt-1">Upload a horizontal poster image Max: 2MB</p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm text-gray-400">Upload Vertical Poster Image <span className="text-red-500">*</span></label>
-            <div className="flex items-center border border-gray-700 rounded bg-[#1a2234] overflow-hidden">
-              <label className="cursor-pointer bg-[#2a3449] hover:bg-[#3a4560] text-white px-4 py-3 text-sm font-medium transition-colors shrink-0">
-                Choose File
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'posterFile')} />
-              </label>
-              <span className="px-4 text-sm text-[#00E5FF] truncate">
-                {formData.posterFile ? formData.posterFile.name : 'No file chosen'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 pt-1">Upload a vertical poster image Max: 2MB</p>
-          </div>
-
-          <div className="space-y-2">
             <label className="text-sm text-gray-400">Select Badge</label>
             <select name="badge" value={formData.badge} onChange={handleChange} className="w-full bg-[#1a2234] border border-gray-700 text-[#00e5ff] rounded px-4 py-3 outline-none focus:border-[#4aa5ff] appearance-none">
               <option value="">Select Badge</option>
@@ -244,6 +349,60 @@ const AdminMovieForm = ({ movie, onClose }) => {
               ))}
             </select>
           </div>
+
+          <SmallUploadField
+            label={<>Vertical Poster Image <span className="text-red-500">*</span></>}
+            hint="Image, max 10MB."
+            accept="image/*"
+            field="poster"
+            formField="posterUrl"
+            uploads={uploads}
+            onChange={handleSmallFileChange}
+          />
+
+          <SmallUploadField
+            label="Movie Thumbnail (horizontal)"
+            hint="Image, max 10MB. Used in listing rows/cards."
+            accept="image/*"
+            field="thumbnail"
+            formField="backdropUrl"
+            uploads={uploads}
+            onChange={handleSmallFileChange}
+          />
+
+          <SmallUploadField
+            label="Subtitle File"
+            hint=".srt, .vtt, .sub or .ass — max 5MB."
+            accept=".srt,.vtt,.sub,.ass,.ssa"
+            field="subtitle"
+            formField="subtitleUrl"
+            uploads={uploads}
+            onChange={handleSmallFileChange}
+          />
+
+          <LargeUploadField
+            label="Movie Video"
+            hint="Video file, max 20GB. Resumable — safe to pause/close and come back."
+            accept="video/*"
+            field="movie"
+            formField="videoUrl"
+            uploads={uploads}
+            onChange={handleLargeFileChange}
+            onPause={pauseUpload}
+            onResume={resumeUpload}
+          />
+
+          <LargeUploadField
+            label="Trailer Video"
+            hint="Video file, max 2GB. Resumable — safe to pause/close and come back."
+            accept="video/*"
+            field="trailer"
+            formField="trailerUrl"
+            uploads={uploads}
+            onChange={handleLargeFileChange}
+            onPause={pauseUpload}
+            onResume={resumeUpload}
+          />
 
           <div className="flex items-center gap-3 pt-8">
             <CustomToggle isOn={formData.status} onToggle={() => setFormData(prev => ({ ...prev, status: !prev.status }))} />
@@ -272,25 +431,25 @@ const AdminMovieForm = ({ movie, onClose }) => {
               <div className="w-8 h-8 rounded bg-[#4aa5ff] flex items-center justify-center text-white font-medium shadow-md shadow-blue-500/20 shrink-0">
                 {index + 1}
               </div>
-              
-              <input 
+
+              <input
                 required
-                type="text" 
-                value={ep} 
+                type="text"
+                value={ep}
                 onChange={(e) => handleEpisodeChange(index, e.target.value)}
-                placeholder={`Episode ${index + 1} Url`} 
-                className="flex-1 bg-[#121826] border border-gray-700 text-white rounded px-4 py-2 outline-none focus:border-[#4aa5ff]" 
+                placeholder={`Episode ${index + 1} Url`}
+                className="flex-1 bg-[#121826] border border-gray-700 text-white rounded px-4 py-2 outline-none focus:border-[#4aa5ff]"
               />
-              
-              <button 
-                type="button" 
+
+              <button
+                type="button"
                 onClick={() => insertEpisodeAfter(index)}
                 className="w-10 h-10 border border-gray-700 rounded bg-[#121826] flex items-center justify-center text-[#22c55e] hover:bg-[#22c55e]/10 transition-colors shrink-0"
               >
                 <Plus size={16} />
               </button>
-              
-              <button 
+
+              <button
                 type="button"
                 onClick={() => removeEpisode(index)}
                 disabled={episodes.length === 1}
@@ -305,9 +464,11 @@ const AdminMovieForm = ({ movie, onClose }) => {
         <div className="border-t border-gray-800/50 pt-6 mt-6 flex justify-end gap-4">
           <button
             type="submit"
-            className="px-6 py-2.5 rounded bg-[#22c55e] text-white font-medium hover:bg-[#16a34a] transition-colors shadow-lg shadow-green-500/20"
+            disabled={isAnyUploadInProgress}
+            title={isAnyUploadInProgress ? 'Wait for uploads to finish before saving' : undefined}
+            className="px-6 py-2.5 rounded bg-[#22c55e] text-white font-medium hover:bg-[#16a34a] transition-colors shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save Show
+            {isAnyUploadInProgress ? 'Uploading...' : 'Save Show'}
           </button>
           <button
             type="button"

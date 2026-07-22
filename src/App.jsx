@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import OtpPage from './pages/OtpPage';
 import PlansPage from './pages/PlansPage';
 import AdminLayout from './pages/admin/AdminLayout';
+import AdminLogin from './pages/admin/AdminLogin';
 
 import AdminMovies from './pages/admin/AdminMovies';
 import AdminHeroBanners from './pages/admin/AdminHeroBanners';
@@ -40,6 +41,9 @@ function App() {
           {/* Auth Routes - Standalone Fullscreen */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/verify-otp" element={<OtpPage />} />
+
+          {/* Admin Login - Standalone, required only for movie/trailer uploads */}
+          <Route path="/admin/login" element={<AdminLogin />} />
 
           {/* Admin Routes - Standalone Layout */}
           <Route path="/admin" element={<AdminLayout />}>

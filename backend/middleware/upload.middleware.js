@@ -1,53 +1,47 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { isExtensionAllowed, isMimeAllowed, getMaxUploadBytes } = require('../utils/uploadLimits.util');
 
-// Ensure upload directories exist
-const createDirIfNotExist = (dir) => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-};
+// Only banner/poster/thumbnail/subtitle come through this path — all capped at
+// a few MB, so buffering in memory before pushing to the VPS over SFTP is safe.
+// movie/trailer (up to 20GB / 2GB) never touch this middleware: they upload
+// directly to the VPS via the tus resumable protocol (see routes/mediaUpload.routes.js),
+// so the backend never buffers or proxies large video bytes.
+const storage = multer.memoryStorage();
 
-createDirIfNotExist('uploads/audio');
-createDirIfNotExist('uploads/thumbnails');
-createDirIfNotExist('uploads/banners');
+const SMALL_FILE_FIELDS = ['banner', 'poster', 'thumbnail', 'subtitle'];
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        if (file.fieldname === 'audio') {
-            cb(null, 'uploads/audio/');
-        } else if (file.fieldname === 'thumbnail') {
-            cb(null, 'uploads/thumbnails/');
-        } else if (file.fieldname === 'banner') {
-            cb(null, 'uploads/banners/');
-        } else {
-            cb(null, 'uploads/');
-        }
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-// File filter (optional, to restrict extensions)
 const fileFilter = (req, file, cb) => {
-    if (file.fieldname === 'audio' && !file.mimetype.startsWith('audio/')) {
-        return cb(new Error('Only audio files are allowed for audio field!'), false);
+    const field = file.fieldname;
+
+    if (!SMALL_FILE_FIELDS.includes(field)) {
+        return cb(new Error(`Unsupported upload field "${field}"`), false);
     }
-    if ((file.fieldname === 'thumbnail' || file.fieldname === 'banner') && !file.mimetype.startsWith('image/')) {
-        return cb(new Error('Only images are allowed for thumbnails and banners!'), false);
+
+    if (!isMimeAllowed(field, file.mimetype)) {
+        return cb(new Error(`Invalid file type for "${field}" — expected a ${field === 'subtitle' ? 'subtitle' : 'image'} file.`), false);
     }
+
+    if (!isExtensionAllowed(field, file.originalname)) {
+        return cb(new Error(`Invalid file extension for "${field}".`), false);
+    }
+
     cb(null, true);
 };
 
-const upload = multer({ 
-    storage: storage,
-    fileFilter: fileFilter,
+// multer's fileSize limit is a single global cap for the whole instance (it can't
+// vary per field), so it's set to the largest of the small-file limits here as a
+// fast first gate; upload.routes.js re-checks the actual per-field limit against
+// the fully-buffered file for an accurate, field-specific error message.
+const GLOBAL_MAX_BYTES = Math.max(
+    ...SMALL_FILE_FIELDS.map((field) => getMaxUploadBytes(field))
+);
+
+const upload = multer({
+    storage,
+    fileFilter,
     limits: {
-        fileSize: 1024 * 1024 * 50 // 50MB limit
-    }
+        fileSize: GLOBAL_MAX_BYTES,
+    },
 });
 
 module.exports = upload;

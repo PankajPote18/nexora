@@ -20,7 +20,8 @@
     "morgan": "^1.11.0",
     "multer": "^2.1.1",
     "mysql2": "^3.22.5",
-    "sequelize": "^6.37.8"
+    "sequelize": "^6.37.8",
+    "ssh2-sftp-client": "^12.1.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

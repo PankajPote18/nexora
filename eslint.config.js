@@ -5,7 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // vps-tus-service is a separate CommonJS Node service deployed to the media
+  // VPS, not part of this Vite/browser app — same reason `backend/` isn't a
+  // realistic target for this browser-focused ESLint config either.
+  globalIgnores(['dist', 'vps-tus-service']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

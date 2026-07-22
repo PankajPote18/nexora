@@ -23,6 +23,10 @@ dist-ssr
 .env
 .env.*
 backend/.env
+vps-tus-service/.env
+
+# SSH private key used for backend -> VPS SFTP auth. Never commit.
+backend/keys/
 
 # Editor directories and files
 .vscode/*

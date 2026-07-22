@@ -22,6 +22,18 @@ const Movie = sequelize.define('Movie', {
         type: DataTypes.STRING,
         allowNull: true
     },
+    videoUrl: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    trailerUrl: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    subtitleUrl: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     rating: {
         type: DataTypes.DECIMAL(3,1),
         allowNull: true
