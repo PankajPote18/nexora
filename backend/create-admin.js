@@ -1,6 +1,6 @@
 // One-off script: creates an admin User row if one doesn't already exist.
 // Needed because POST /api/auth/register always creates role:'user', and
-// there is no other way to get an admin JWT for POST /api/media/authorize.
+// there is no other way to get an admin JWT (see src/pages/admin/AdminLogin.jsx).
 // Usage: node create-admin.js <email> <password> [name]
 require('dotenv').config();
 const bcrypt = require('bcrypt');

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Play, Plus } from 'lucide-react';
 import { usePremiumModal } from '../context/PremiumModalContext';
+import MovieRow from '../components/MovieRow';
 
 const DetailPage = () => {
   const { id } = useParams();
@@ -136,26 +137,12 @@ const DetailPage = () => {
         </div>
       </div>
 
-      {/* More Like This Section */}
+      {/* More Like This Section — reuses the same MovieRow/MovieCard used on
+          the Home page so sizing, spacing, typography, and hover effects are
+          identical instead of a duplicated, oversized custom grid. */}
       {related && related.length > 0 && (
         <div className="max-w-[1440px] mx-auto mt-10 lg:mt-16">
-          <div className="flex items-center justify-between mb-6 lg:mb-8">
-            <h2 className="text-gray-400 font-bold tracking-[0.15em] text-sm lg:text-[15px] uppercase">MORE LIKE THIS</h2>
-            <button className="text-[#00A8E1] text-[13px] lg:text-[15px] font-bold hover:text-[#33bbf2] transition cursor-pointer">See all</button>
-          </div>
-
-          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-8">
-            {related.map((relMovie, idx) => (
-              <div key={idx} className="flex flex-col group cursor-pointer">
-                <div className="aspect-square bg-[#090d16] rounded-[16px] overflow-hidden relative mb-3 lg:mb-4 transition-transform duration-300 group-hover:scale-105 shadow-lg">
-                  <img src={relMovie.backdropUrl || relMovie.posterUrl} alt={relMovie.title} className="absolute inset-0 w-full h-full object-cover" />
-                </div>
-
-                <h3 className="text-white font-bold text-[13px] lg:text-[15px] truncate group-hover:text-[#00A8E1] transition-colors">{relMovie.title}</h3>
-                <p className="text-gray-400 text-[11px] lg:text-[13px] mt-1 font-medium">{relMovie.year} • {relMovie.genres?.[0] || 'Drama'}</p>
-              </div>
-            ))}
-          </div>
+          <MovieRow title="More Like This" movies={related} cardType="square" />
         </div>
       )}
     </div>

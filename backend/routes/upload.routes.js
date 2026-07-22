@@ -1,41 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const upload = require('../middleware/upload.middleware');
-const { uploadFilesToVps } = require('../utils/mediaStorage.util');
-const { getMaxUploadBytes, getMaxUploadMb } = require('../utils/uploadLimits.util');
 
-// Small, bounded files only (banner/poster/thumbnail/subtitle — all a few MB at
-// most). movie/trailer are handled by the separate tus resumable upload flow
-// (see mediaUpload.routes.js) so they never pass through this Express route.
+// Every media type — banner/poster/thumbnail/subtitle/movie/trailer — streams
+// through this single endpoint straight to Bunny Storage (see
+// upload.middleware.js). The backend never buffers a full file or writes it
+// to local disk, regardless of size.
 const UPLOAD_FIELDS = [
     { name: 'banner', maxCount: 1 },
     { name: 'poster', maxCount: 1 },
     { name: 'thumbnail', maxCount: 1 },
     { name: 'subtitle', maxCount: 1 },
+    { name: 'movie', maxCount: 1 },
+    { name: 'trailer', maxCount: 1 },
 ];
 
 router.post('/', upload.fields(UPLOAD_FIELDS), async (req, res) => {
     try {
-        const incoming = [];
+        const files = {};
         for (const field of UPLOAD_FIELDS) {
             const file = req.files?.[field.name]?.[0];
             if (!file) continue;
-
-            const maxBytes = getMaxUploadBytes(field.name);
-            if (file.size > maxBytes) {
-                return res.status(413).json({
-                    message: `"${field.name}" file is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed is ${getMaxUploadMb(field.name)}MB.`,
-                });
-            }
-
-            incoming.push({ fieldname: field.name, buffer: file.buffer, originalname: file.originalname });
+            files[field.name] = file.bunnyUrl;
         }
 
-        if (incoming.length === 0) {
+        if (Object.keys(files).length === 0) {
             return res.status(400).json({ message: 'No files were uploaded' });
         }
-
-        const files = await uploadFilesToVps(incoming);
 
         res.json({ message: 'Files uploaded successfully', files });
     } catch (error) {
@@ -44,9 +35,9 @@ router.post('/', upload.fields(UPLOAD_FIELDS), async (req, res) => {
     }
 });
 
-// Multer errors (e.g. LIMIT_FILE_SIZE from the global cap, or fileFilter
-// rejections) land here instead of the generic app.js error handler, so the
-// admin sees a specific, actionable message rather than "Internal Server Error".
+// Errors thrown from BunnyStorageEngine._handleFile (size/type validation,
+// Bunny Storage failures) land here instead of the generic app.js error
+// handler, so the admin sees a specific, actionable message.
 router.use((err, req, res, next) => {
     if (err) {
         return res.status(400).json({ message: err.message || 'Upload failed validation' });

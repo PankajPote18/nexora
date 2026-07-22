@@ -1,7 +1,7 @@
-// Shared upload policy — used by the small-file SFTP path (upload.middleware.js /
-// upload.routes.js) AND by the tus upload-authorization endpoint (mediaUpload.controller.js)
-// so both enforce the exact same rules. All size limits are environment-configurable;
-// nothing here is a hardcoded ceiling the operator can't change without a code edit.
+// Shared upload policy — used by upload.middleware.js's BunnyStorageEngine for
+// every media field (banner/poster/thumbnail/subtitle/movie/trailer). All size
+// limits are environment-configurable; nothing here is a hardcoded ceiling the
+// operator can't change without a code edit.
 
 const DEFAULT_LIMITS_MB = {
     banner: 10,

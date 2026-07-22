@@ -10,9 +10,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// All uploaded media is now served directly by Nginx on the VPS media
-// server (see backend/utils/mediaStorage.util.js) — there is no local
-// uploads folder to serve statically here anymore.
+// All uploaded media is served directly from Bunny Storage's CDN (see
+// backend/utils/bunnyStorage.util.js) — there is no local uploads folder to
+// serve statically here anymore.
 
 // Basic route for testing
 app.get('/', (req, res) => {
@@ -29,7 +29,6 @@ app.use('/api/settings-pages', require('./routes/settingsPage.routes'));
 app.use('/api/settings-menu', require('./routes/settingsMenu.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));
 app.use('/api/upload', require('./routes/upload.routes'));
-app.use('/api/media', require('./routes/mediaUpload.routes'));
 app.use('/api/master', require('./routes/master.routes'));
 app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
 app.use('/api/trays', require('./routes/tray.routes'));

@@ -19,14 +19,10 @@ dist-ssr
 /playwright/.cache/
 
 # Environment files contain live secrets (DB credentials, JWT secret, PayU
-# merchant key/salt) and must never be committed.
+# merchant key/salt, Bunny Storage keys) and must never be committed.
 .env
 .env.*
 backend/.env
-vps-tus-service/.env
-
-# SSH private key used for backend -> VPS SFTP auth. Never commit.
-backend/keys/
 
 # Editor directories and files
 .vscode/*

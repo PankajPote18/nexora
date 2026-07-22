@@ -71,8 +71,8 @@ const AdminHeroBannerForm = ({ banner, totalBanners, onClose }) => {
         if (uploadRes.ok) {
           const uploaded = await uploadRes.json();
           if (uploaded.files && uploaded.files.banner) {
-             // Mocking the real url for now since it's local
-             finalImageUrl = `${import.meta.env.VITE_API_URL}/${uploaded.files.banner}`;
+             // /api/upload already returns the full Bunny CDN URL.
+             finalImageUrl = uploaded.files.banner;
           }
         }
       }

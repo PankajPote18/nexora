@@ -24,10 +24,10 @@ The project is mid-development / prototype-quality: some flows are fully wired t
 - Node.js + Express 5
 - Sequelize 6 ORM + `mysql2` driver → MySQL database
 - `jsonwebtoken` + `bcrypt` for auth (JWT-based, stateless)
-- `multer` for file uploads (local disk storage under `backend/uploads/`)
+- `multer` (custom streaming storage engine) for file uploads — streamed directly to Bunny Storage, never to local disk (see §19)
 - `morgan` for request logging, `cors`, `dotenv`
 
-**Database**: MySQL, hosted on Railway (`hayabusa.proxy.rlwy.net`, per `backend/.env`). Sequelize `sync({ alter: true })` is used instead of migrations (see §16).
+**Database**: MySQL, hosted on Railway (`hayabusa.proxy.rlwy.net`, per `backend/.env`). Historically `sync({ alter: true })` was used instead of migrations; `sequelize-cli` migrations now exist for schema changes that must not touch production via `sync` (see §16, §20) — the two approaches currently coexist.
 
 **Package manager**: npm (both root frontend and `backend/` have their own `package.json` / `package-lock.json` — this is a two-package-directory repo, not a monorepo tool like Turborepo/Nx).
 
@@ -55,7 +55,7 @@ The project is mid-development / prototype-quality: some flows are fully wired t
       api.js              # Partial fetch-wrapper API client (NOT used by all pages — see §16)
     data/
       mockData.js         # Legacy mock movie data — no longer imported anywhere (dead file)
-  public/                 # Static assets served as-is (favicon, icons, video.mp4)
+  public/                 # Static assets served as-is (favicon, icons) — no sample/demo video
   dist/                   # Vite build output — generated, ignore
   vite.config.js          # Vite + React + Tailwind plugin config
   eslint.config.js        # Flat ESLint config (js recommended + react-hooks + react-refresh)
@@ -75,22 +75,21 @@ backend/                  # Express API (separate package.json, own node_modules
   middleware/
     auth.middleware.js     # JWT verification, sets req.user from token payload
     role.middleware.js     # authorizeRoles(...roles) factory, checks req.user.role
-    upload.middleware.js   # multer config: routes files by fieldname to uploads/{audio,thumbnails,banners}
-  uploads/                 # multer's disk storage destination, served statically at /uploads
+    upload.middleware.js   # custom multer storage engine — streams every field directly to Bunny Storage (see §19)
   seed*.js, create-tray-table.js, fix-collation.js, test.js  # One-off dev/ops scripts,
                           #   run manually with `node <file>.js`, not part of the app boot
                           #   (see §16 for what each does)
   backend/.env             # DB credentials, JWT secret, PORT — see §11 (do not hardcode reads of actual values)
 
-There is no `backend/services/` or `backend/utils/` content — both directories exist but are empty.
+`backend/services/` doesn't exist. `backend/utils/` has real content: `bunnyStorage.util.js` (Bunny Storage streaming upload, see §19), `uploadLimits.util.js` (shared size/extension/MIME policy), and `payu.util.js` (PayU hashing/verification, see §9).
 ```
 
 ## 4. Architecture — How the Pieces Talk
 
 - **Frontend → Backend**: plain `fetch()` calls (some routed through `src/services/api.js`, most inline in page components) hitting `${VITE_API_URL}/api/...` (or a hardcoded backend URL in `api.js` — see §16). No axios, no React Query/SWR, no request caching library.
 - **Backend → Database**: Sequelize models query MySQL directly from controllers. No repository/service abstraction layer — controllers call `Model.findAll/findByPk/create/update/destroy` directly.
-- **Schema management**: `sequelize.sync({ alter: true })` runs on every server boot (`server.js`) — this auto-alters tables to match model definitions instead of using versioned migrations. There is no `migrations/` folder.
-- **File uploads**: frontend `FormData` → `POST /api/upload` (multer, disk storage) → backend returns a relative path → frontend stores that path/URL string on the parent record (e.g. `HeroBanner.image`, movie poster fields). Files are served back via `express.static('/uploads')`.
+- **Schema management**: `sequelize.sync({ alter: true })` still runs on every server boot (`server.js`) for general model-driven schema drift. A `backend/migrations/` folder now also exists (via `sequelize-cli`, see §20) for changes made deliberately outside of `sync` — used so far for the `movies.videoUrl/trailerUrl/subtitleUrl` columns.
+- **File uploads**: frontend `FormData` → `POST /api/upload` → a custom multer storage engine streams the file directly to **Bunny Storage** (no local disk, no buffering the full file) → backend returns the Bunny CDN URL → frontend stores that URL on the parent record (e.g. `HeroBanner.image`, movie poster/video fields). See §19 for the full architecture.
 - **Auth**: JWT is issued by `/api/auth/login` and `/api/auth/register`, verified by `auth.middleware.js`, but — important — **the actual frontend login screens do not call these endpoints** (see §8 and §16).
 
 ## 5. Frontend Architecture
@@ -148,14 +147,14 @@ There is no `backend/services/` or `backend/utils/` content — both directories
 **Middleware**:
 - `auth.middleware.js` — expects `Authorization: Bearer <token>`, verifies with `JWT_SECRET`, sets `req.user = decoded` (contains `id`, `role`, `email`).
 - `role.middleware.js` — `authorizeRoles(...roles)` factory, 403s if `req.user.role` isn't in the allowed list.
-- `upload.middleware.js` — multer disk storage; routes files to `uploads/audio|thumbnails|banners` by fieldname; 50MB limit; mimetype filter per field.
+- `upload.middleware.js` — custom multer storage engine (`BunnyStorageEngine`); streams every field (banner/poster/thumbnail/subtitle/movie/trailer) directly to Bunny Storage as bytes arrive, enforcing per-field size/extension/MIME limits mid-stream (see §19). No local disk, no full in-memory buffering, no fixed global size cap.
 
 **Error handling**: single global error handler in `app.js` (`app.use((err, req, res, next) => ...)`) that logs `err.stack` and returns 500 with the message only in `NODE_ENV=development`. Most errors are actually caught and responded to at the controller level before reaching this handler.
 
 ## 7. Database
 
 - **Engine**: MySQL (Railway-hosted), accessed via Sequelize + `mysql2`.
-- **Schema strategy**: `sequelize.sync({ alter: true })` on boot — **no migrations directory exists**. Changing a model changes the live table on next server start.
+- **Schema strategy**: `sequelize.sync({ alter: true })` on boot remains the default — changing a model changes the live table on next server start. A `sequelize-cli` migrations setup (`backend/migrations/`, `backend/config/config.js`, `backend/.sequelizerc`) now also exists for changes that should be applied deliberately and reversibly instead of via `sync` (see §20). Run with `npm run migrate` from `backend/`.
 - **Naming**: table names are `snake_case` plural (`users`, `movies`, `subscription_plans`, `settings_pages`, `settings_menu`, `categories`, `hero_banners`, `genres`, `languages`, `age_certificates`, `mature_themes`, `badges`, `vendors`, `trays`); models use Sequelize's default `createdAt`/`updatedAt` mapped explicitly to `created_at`/`updated_at` (except `Tray`, which uses `underscored: true` instead).
 
 **Models** (`backend/models/`):
@@ -260,7 +259,7 @@ No `.env.example` file exists in either directory — if adding new env vars, co
 - **Render** — backend hosting (`nexora-backend1.onrender.com`, per `.env.production` and the hardcoded URL in `src/services/api.js`).
 - **PayU** — payment gateway, UPI Intent S2S integration (see §9). Backend calls PayU's `_payment` (initiate) and `merchant/postservice` (verify) APIs directly via Node's built-in `fetch`; PayU calls back into this backend via `surl`/`furl`/webhook.
 - No email provider (nodemailer, SendGrid, etc.), no SMS/OTP provider (Twilio, MSG91, etc.) despite the UI implying OTP-based login — that flow is entirely mocked client-side (§8).
-- No cloud storage provider (S3, Cloudinary, etc.) — uploads are saved to local disk (`backend/uploads/`) via multer and served via Express static middleware. This will not persist across redeploys on ephemeral hosts like Render's free tier — worth flagging if asked to make uploads production-durable.
+- **Bunny Storage + Bunny CDN** — all media uploads (banner/poster/thumbnail/subtitle/movie/trailer) stream directly from the backend to Bunny Storage and are served back via a Bunny CDN Pull Zone. No local disk storage, no other cloud storage provider (no S3/Cloudinary). See §19 for the full architecture.
 
 ## 13. Coding Conventions
 
@@ -310,7 +309,7 @@ No build step for the backend (plain CommonJS Node, no bundler/TS compile).
 ## 16. Important Business Logic
 
 - **Paywall gate**: only `DetailPage.jsx`'s "Watch now" button checks subscription status (via the mocked `localStorage['user'].isSubscribed`) before allowing navigation to `/player/:id`. The player route itself (`PlayerPage.jsx`) has no guard — navigating directly to `/player/:id` bypasses the paywall entirely.
-- **Video playback**: `PlayerPage.jsx` always plays the same static `public/video.mp4` regardless of which movie `:id` is requested — it only fetches the movie record to display the title. There is no per-movie video source wired up yet.
+- **Video playback**: `PlayerPage.jsx` fetches the movie record and plays `movie.videoUrl` (the Bunny CDN URL) directly — no sample/fallback video exists anywhere in the project. If `videoUrl` is empty, the `<video>` element isn't rendered at all; a "Video not available" empty state is shown instead.
 - **Home page composition**: `HomePage.jsx` fetches categories, movies, hero banners, and trays in parallel, then assembles the page as: Hero (from active `HeroBanner`s, or a fallback built from `movies` filtered by `category_id === 'hero'`, or the first 5 movies) → "Continue Watching" row (hardcoded to movie IDs `['11','16','17','18','19']` with hardcoded fake progress percentages, or a fallback slice if those IDs aren't present) → dynamic `Tray` rows (each tray's `shows` array of movie IDs resolved against the fetched movie list, sorted by `sorting_position`).
 - **Hero banner / tray deletion re-sequencing**: deleting a `HeroBanner` or `Tray` re-numbers the remaining records' `sorting_position` to stay contiguous (`heroBanner.controller.js` / `tray.controller.js` `remove` handlers) — preserve this behavior if touching those controllers, it's intentional, not incidental.
 - **Movie `genres`/`cast` storage**: stored as JSON-stringified TEXT columns; `genres` has a custom Sequelize getter that JSON-parses on read (falling back to comma-split on parse failure); `cast` has no such getter — it's returned as a raw JSON string to callers. Any code reading `movie.cast` needs to `JSON.parse()` it manually; this is inconsistent with `genres` and easy to trip over.
@@ -322,10 +321,10 @@ No build step for the backend (plain CommonJS Node, no bundler/TS compile).
 - **`backend/.env` was already committed to git with real secrets before the PayU work** (Railway DB password, JWT secret) — confirmed via `git ls-files`, this repo's root `.gitignore` never excluded `.env` files. PayU credential placeholders (`PAYU_MERCHANT_KEY`/`PAYU_SALT`) were added to that same file, and `.gitignore` has now been updated to exclude `.env`/`backend/.env` going forward — **but this does not remove already-committed secrets from git history**. Before filling in real PayU credentials (or going anywhere near production), rotate the DB password and JWT secret, and strongly consider scrubbing `backend/.env` from git history (e.g. `git filter-repo`) — this is a manual decision for the repo owner, not something to do unprompted.
 - **`/admin` has no frontend route guard** and most admin-facing backend endpoints have no `authMiddleware` — effectively the entire CMS is publicly writable by anyone who knows/guesses the URL. Flag this explicitly if the user asks for anything security-adjacent; do not assume it's intentional/acceptable without asking.
 - **Frontend login/OTP is fully mocked** (§8) — it does not call the real, already-implemented backend `/api/auth/*` endpoints. If a task involves "fixing login" or "adding real auth," the backend groundwork already exists; the disconnect is entirely on the frontend side.
-- **No DB migrations** — schema changes happen via `sequelize.sync({ alter: true })` on every boot. This is workable for a prototype but risky for any real production data; if the user wants safer schema evolution, migrations (`sequelize-cli`) would need to be introduced.
+- **Schema evolution is now a mix of `sync({ alter: true })` (default, on every boot) and `sequelize-cli` migrations** (`backend/migrations/`, introduced for the `movies` media-URL columns specifically to avoid running `sync` against production — see §20). When adding new model fields, prefer a migration over relying on the next `sync` if the change needs to land on the live Railway DB in a controlled, reviewable way.
 - **`src/data/mockData.js` is dead code** — not imported anywhere in the current app. Confirm before deleting (it's harmless to leave, but don't extend it thinking it's live).
 - **`SettingsPage.full_content` is rendered via `dangerouslySetInnerHTML`** in `SettingsDetailPage.jsx` with only a code-comment warning about sanitization — there is no DOMPurify or backend sanitization currently in place. Since this content is only editable via the (currently unguarded) admin panel, this is an XSS risk if admin write access is ever exposed to untrusted users.
-- **Uploaded files are stored on local disk** (`backend/uploads/`), not cloud storage — will not survive redeploys on most PaaS hosts. Flag this if productionizing uploads.
+- **All uploaded media is stored on Bunny Storage** and served via Bunny CDN — nothing is ever written to local disk (see §19). This section previously described a local-disk upload system; that no longer exists anywhere in this codebase.
 - **One-off backend scripts** (`seed*.js`, `create-tray-table.js`, `fix-collation.js`, `test.js`) are meant to be run manually via `node backend/<file>.js`, not imported or run automatically. Several of them **destructively clear tables first** (`seedRemainingData.js`, `seed-trays.js` variants) — never run them against a database with real data without checking their contents first.
 - **Backend uses CommonJS, frontend uses ESM** — this is an intentional/inherent split (Node backend vs. Vite/browser frontend), not a bug; don't try to unify module systems across the two package.json boundaries.
 - **`backend/.env` in this working copy contains real Railway DB credentials and a placeholder JWT secret** (`your_super_secret_jwt_key_change_in_production`) — flag the placeholder JWT secret if doing any security-related work; it should be rotated before any real production use.
@@ -349,3 +348,33 @@ No build step for the backend (plain CommonJS Node, no bundler/TS compile).
 - Be extremely careful before running any backend script or `npm run dev`/`start` in `backend/` — it will `sync({ alter: true })` and potentially seed/mutate whatever database is configured, which currently points at a live Railway MySQL instance (§15).
 - Do not implement PayU or any payment provider integration unless separately and explicitly instructed — see §9.
 - Keep this file updated when architecture, integrations, payment flows, database structure, or conventions materially change.
+
+## 19. Media Upload Architecture (Bunny Storage only)
+
+This section documents the **current, final** media upload architecture. Two earlier iterations during this project's development are both **completely removed**: (1) a self-hosted VPS with SFTP + a custom tus resumable-upload server, and (2) a Bunny Stream-based direct-to-browser tus upload for movie/trailer specifically. Neither exists anymore, in any form. If any other section of this file still references a VPS, SFTP, tus, or Bunny Stream for uploads, trust this section instead.
+
+**One upload path for every media type** (banner/poster/thumbnail/subtitle/movie/trailer, from a few KB up to 20GB): browser → `POST /api/upload` (Express, `upload.fields([...])` in `backend/routes/upload.routes.js`) → a custom multer storage engine (`BunnyStorageEngine` in `backend/middleware/upload.middleware.js`) streams each file's bytes directly into an outgoing HTTPS PUT to **Bunny Storage** (`backend/utils/bunnyStorage.util.js`, plain Node `https`, no third-party SDK) as they arrive from the client — the file is never buffered in full in memory, never written to local disk, and no temp file is created, regardless of size. The backend returns `{ message, files: { [fieldname]: bunnyCdnUrl } }`; the frontend stores that URL directly (`posterUrl`, `backdropUrl`, `videoUrl`, `trailerUrl`, `subtitleUrl`, `HeroBanner.image`, etc).
+
+**Per-field size/type limits** are enforced inside `BunnyStorageEngine._handleFile` by counting bytes as they stream past (not by inspecting a fully-buffered file), so a movie upload that exceeds `MAX_UPLOAD_MB_MOVIE` is rejected mid-stream rather than after fully receiving it. Extension/MIME checks (`backend/utils/uploadLimits.util.js`) run before any bytes are forwarded to Bunny.
+
+**Why not Bunny Stream, and why not a resumable protocol**: both were built and then explicitly removed by the project owner in favor of routing every media type — including large movie files — through the same single backend-mediated `/api/upload` flow, accepting the tradeoff that very large uploads are a single non-resumable HTTP request rather than a resumable one. If this becomes a real reliability problem in production (Render's proxy layer has a short request timeout and has been observed rejecting large uploads well under 1GB), the fix would be to re-introduce some form of direct-to-storage or resumable upload — but do not do this speculatively; it was deliberately removed twice.
+
+**Environment variables** (`backend/.env`): `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_REGION`, `BUNNY_STORAGE_ACCESS_KEY`, `BUNNY_CDN_BASE_URL`, plus `MAX_UPLOAD_MB_BANNER/POSTER/THUMBNAIL/SUBTITLE/MOVIE/TRAILER` (shared size policy, `backend/utils/uploadLimits.util.js`) — all Bunny values are placeholders in the working copy and must be filled in from the Bunny dashboard before uploads will work. There is no `BUNNY_STREAM_*` or `TUS_*`/`SFTP_*` variable anywhere in this project anymore.
+
+**No media is ever stored on the physical server/Render instance** — not even temporarily on disk, and not even for movie/trailer files.
+
+**Upload auth**: `POST /api/upload` has no auth middleware (consistent with most other routes in this codebase, §6) — this now applies to movie/trailer too, since they go through the same endpoint as everything else. `src/pages/admin/AdminLogin.jsx` and the `adminAuthToken` flow still exist (real `/api/auth/login` call, still gates nothing on its own) but are no longer wired into the upload flow — they were originally built for the now-removed Bunny Stream authorize step. Left in place since removing an auth feature wasn't requested; flag as orphaned if asked to clean up authentication code.
+
+**If extending this further**: the Bunny Storage folder mapping (`FOLDERS` in `bunnyStorage.util.js`) currently only covers fields with real upload UI (`banner`/`poster`/`thumbnail`/`subtitle`/`movie`/`trailer`) — don't add `logos`/`profiles` folders speculatively until a feature actually needs them.
+
+## 20. Sequelize Migrations (`backend/migrations/`)
+
+This project's default schema strategy is still `sequelize.sync({ alter: true })` on every server boot (§7, §16) — that hasn't changed and remains how most model changes reach the live Railway DB. A proper `sequelize-cli` migrations setup was added specifically so a schema change can be applied to production **without** running `sync` (which alters the whole schema to match every model, not just the one intended change, and was explicitly ruled out for a specific fix).
+
+**Files**: `backend/.sequelizerc` (points sequelize-cli at `config/config.js`, `migrations/`, `models/`), `backend/config/config.js` (mirrors `db.config.js`'s connection logic — `DATABASE_URL` if set, else discrete `DB_*` vars, same SSL handling; all three `development`/`test`/`production` blocks resolve to the same real Railway DB, since this project only has one), `backend/migrations/*.js` (one file per migration, `up`/`down`).
+
+**Commands** (run from `backend/`): `npm run migrate` (apply pending migrations), `npm run migrate:undo` (revert the most recent one), `npm run migrate:status` (list applied/pending — safe, read-only against `SequelizeMeta`, useful to sanity-check the config before applying anything).
+
+**First migration**: `20260722161015-add-movie-media-columns.js` — added `movies.videoUrl`/`trailerUrl`/`subtitleUrl` (already defined on the `Movie` model since the Bunny Storage upload work, §19, but never applied to the live table because `sync` was deliberately not run against production for this). Idempotent (checks `describeTable` before adding/removing each column) and touches no existing rows. Applied and verified: live schema now matches the `Movie` model exactly, and creating a movie with all five URL fields (`posterUrl`/`backdropUrl`/`videoUrl`/`trailerUrl`/`subtitleUrl`) round-trips correctly.
+
+**Going forward**: both mechanisms coexist. For routine model tweaks, `sync({ alter: true })` on next boot is still this project's default (accept the tradeoff noted in §17). For a change that needs to land on production deliberately, reviewably, and reversibly — or where you don't want a full `sync` pass touching unrelated tables — write a migration instead.

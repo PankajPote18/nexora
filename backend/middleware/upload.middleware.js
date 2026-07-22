@@ -1,47 +1,61 @@
 const multer = require('multer');
-const { isExtensionAllowed, isMimeAllowed, getMaxUploadBytes } = require('../utils/uploadLimits.util');
+const { PassThrough } = require('stream');
+const { isExtensionAllowed, isMimeAllowed, getMaxUploadBytes, getMaxUploadMb } = require('../utils/uploadLimits.util');
+const { uploadStreamToBunny, buildFilename, FOLDERS } = require('../utils/bunnyStorage.util');
 
-// Only banner/poster/thumbnail/subtitle come through this path — all capped at
-// a few MB, so buffering in memory before pushing to the VPS over SFTP is safe.
-// movie/trailer (up to 20GB / 2GB) never touch this middleware: they upload
-// directly to the VPS via the tus resumable protocol (see routes/mediaUpload.routes.js),
-// so the backend never buffers or proxies large video bytes.
-const storage = multer.memoryStorage();
+// Custom multer storage engine — every field (banner/poster/thumbnail/
+// subtitle/movie/trailer) is piped directly from the incoming request into
+// an outgoing Bunny Storage PUT as bytes arrive. Nothing is ever buffered in
+// full or written to local disk, so this is safe for a 20GB movie file the
+// same way it's safe for a 200KB poster — memory use stays bounded to
+// whatever the stream's internal buffer holds at any instant, not the whole
+// file.
+class BunnyStorageEngine {
+    _handleFile(req, file, cb) {
+        const field = file.fieldname;
 
-const SMALL_FILE_FIELDS = ['banner', 'poster', 'thumbnail', 'subtitle'];
+        if (!FOLDERS[field]) {
+            file.stream.resume(); // drain the socket so the request doesn't hang
+            return cb(new Error(`Unsupported upload field "${field}"`));
+        }
+        if (!isMimeAllowed(field, file.mimetype)) {
+            file.stream.resume();
+            return cb(new Error(`Invalid file type for "${field}".`));
+        }
+        if (!isExtensionAllowed(field, file.originalname)) {
+            file.stream.resume();
+            return cb(new Error(`Invalid file extension for "${field}".`));
+        }
 
-const fileFilter = (req, file, cb) => {
-    const field = file.fieldname;
+        const maxBytes = getMaxUploadBytes(field);
+        const filename = buildFilename(file.originalname);
+        const limited = new PassThrough();
 
-    if (!SMALL_FILE_FIELDS.includes(field)) {
-        return cb(new Error(`Unsupported upload field "${field}"`), false);
+        let bytesReceived = 0;
+        let limitError = null;
+
+        file.stream.on('data', (chunk) => {
+            bytesReceived += chunk.length;
+            if (bytesReceived > maxBytes && !limitError) {
+                limitError = new Error(`"${field}" file is too large. Maximum allowed is ${getMaxUploadMb(field)}MB.`);
+                limited.destroy(limitError);
+            }
+        });
+        file.stream.on('error', (err) => limited.destroy(err));
+        file.stream.pipe(limited);
+
+        uploadStreamToBunny(field, filename, limited, file.mimetype)
+            .then((bunnyUrl) => cb(null, { bunnyUrl }))
+            .catch((err) => cb(limitError || err));
     }
 
-    if (!isMimeAllowed(field, file.mimetype)) {
-        return cb(new Error(`Invalid file type for "${field}" — expected a ${field === 'subtitle' ? 'subtitle' : 'image'} file.`), false);
+    _removeFile(req, file, cb) {
+        // Nothing local to clean up — the file was streamed directly to Bunny
+        // Storage and never touched this server's disk or memory in full.
+        cb(null);
     }
+}
 
-    if (!isExtensionAllowed(field, file.originalname)) {
-        return cb(new Error(`Invalid file extension for "${field}".`), false);
-    }
-
-    cb(null, true);
-};
-
-// multer's fileSize limit is a single global cap for the whole instance (it can't
-// vary per field), so it's set to the largest of the small-file limits here as a
-// fast first gate; upload.routes.js re-checks the actual per-field limit against
-// the fully-buffered file for an accurate, field-specific error message.
-const GLOBAL_MAX_BYTES = Math.max(
-    ...SMALL_FILE_FIELDS.map((field) => getMaxUploadBytes(field))
-);
-
-const upload = multer({
-    storage,
-    fileFilter,
-    limits: {
-        fileSize: GLOBAL_MAX_BYTES,
-    },
-});
+const upload = multer({ storage: new BunnyStorageEngine() });
 
 module.exports = upload;

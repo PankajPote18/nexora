@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, X, Plus, Trash2, ArrowLeft } from 'lucide-react';
-import { startResumableUpload, uploadSmallFile } from '../../services/tusUpload';
+import { uploadMediaFile } from '../../services/mediaUpload';
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button
@@ -22,8 +22,8 @@ const initialUploadStatus = (url) => (
     : { status: 'idle', progress: 0, fileName: '', error: '' }
 );
 
-// Small, bounded files (image/subtitle) — uploaded via the existing
-// Express -> SFTP path (POST /api/upload). Shows a busy indicator while
+// Small, bounded files (image/subtitle) — uploaded via POST /api/upload,
+// which streams straight to Bunny Storage. Shows a busy indicator while
 // uploading since these complete in well under a second.
 const SmallUploadField = ({ label, hint, accept, field, formField, uploads, onChange }) => {
   const state = uploads[field];
@@ -46,11 +46,12 @@ const SmallUploadField = ({ label, hint, accept, field, formField, uploads, onCh
   );
 };
 
-// Large files (movie/trailer) — resumable upload direct to the VPS via tus.
-// Shows real byte progress and supports pause/resume.
-const LargeUploadField = ({ label, hint, accept, field, formField, uploads, onChange, onPause, onResume }) => {
+// Large files (movie/trailer) — same POST /api/upload path as every other
+// media type, streamed straight to Bunny Storage. Shows real byte progress
+// (no pause/resume — the upload is a single streamed request, not resumable).
+const LargeUploadField = ({ label, hint, accept, field, formField, uploads, onChange }) => {
   const state = uploads[field];
-  const isActive = state.status === 'uploading' || state.status === 'paused';
+  const isActive = state.status === 'uploading';
   return (
     <div className="space-y-2">
       <label className="text-sm text-gray-400">{label}</label>
@@ -62,22 +63,13 @@ const LargeUploadField = ({ label, hint, accept, field, formField, uploads, onCh
         <span className="px-4 text-sm text-[#00E5FF] truncate flex-1">
           {state.fileName || 'No file chosen'}
         </span>
-        {isActive && (
-          <button
-            type="button"
-            onClick={() => (state.status === 'uploading' ? onPause(field) : onResume(field))}
-            className="px-3 text-xs text-gray-300 hover:text-white shrink-0"
-          >
-            {state.status === 'uploading' ? 'Pause' : 'Resume'}
-          </button>
-        )}
       </div>
       {isActive && (
         <div className="space-y-1">
           <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
             <div className="h-full bg-[#4aa5ff] transition-all duration-300" style={{ width: `${state.progress}%` }} />
           </div>
-          <p className="text-xs text-gray-400">{state.progress}% {state.status === 'paused' ? '(paused)' : 'uploaded'}</p>
+          <p className="text-xs text-gray-400">{state.progress}% uploaded</p>
         </div>
       )}
       {state.status === 'error' && <p className="text-xs text-red-400">{state.error}</p>}
@@ -101,7 +93,6 @@ const AdminMovieForm = ({ movie, onClose }) => {
     movie: initialUploadStatus(movie?.videoUrl),
     trailer: initialUploadStatus(movie?.trailerUrl),
   });
-  const uploadRefs = useRef({});
 
   const [episodes, setEpisodes] = useState(
     movie?.episodes || ['']
@@ -175,56 +166,23 @@ const AdminMovieForm = ({ movie, onClose }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // banner/poster/thumbnail/subtitle — small, bounded files via /api/upload
-  const handleSmallFileChange = async (e, field, formField) => {
+  // Every media type (banner/poster/thumbnail/subtitle/movie/trailer) uploads
+  // the same way: POST /api/upload, which streams the file straight to Bunny
+  // Storage and returns its Bunny CDN URL.
+  const handleFileChange = async (e, field, formField) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     updateUpload(field, { status: 'uploading', progress: 0, fileName: file.name, error: '' });
     try {
-      const url = await uploadSmallFile(field, file);
+      const url = await uploadMediaFile(field, file, (sent, total) => {
+        updateUpload(field, { progress: Math.round((sent / total) * 100) });
+      });
       setFormData(prev => ({ ...prev, [formField]: url }));
       updateUpload(field, { status: 'done', progress: 100 });
     } catch (err) {
-      updateUpload(field, { status: 'error', error: err.message });
-    }
-  };
-
-  // movie/trailer — large, resumable uploads direct to the VPS via tus
-  const handleLargeFileChange = async (e, field, formField) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const adminToken = localStorage.getItem('adminAuthToken');
-    updateUpload(field, { status: 'uploading', progress: 0, fileName: file.name, error: '' });
-
-    try {
-      const instance = await startResumableUpload({
-        file,
-        fieldType: field,
-        movieId: movie?.id,
-        adminToken,
-        onProgress: (sent, total) => updateUpload(field, { progress: Math.round((sent / total) * 100) }),
-        onSuccess: (url) => {
-          setFormData(prev => ({ ...prev, [formField]: url }));
-          updateUpload(field, { status: 'done', progress: 100 });
-        },
-        onError: (err) => updateUpload(field, { status: 'error', error: err.message || 'Upload failed' }),
-      });
-      uploadRefs.current[field] = instance;
-    } catch (err) {
       updateUpload(field, { status: 'error', error: err.message || 'Upload failed' });
     }
-  };
-
-  const pauseUpload = (field) => {
-    uploadRefs.current[field]?.abort();
-    updateUpload(field, { status: 'paused' });
-  };
-
-  const resumeUpload = (field) => {
-    updateUpload(field, { status: 'uploading' });
-    uploadRefs.current[field]?.start();
   };
 
   const handleEpisodeChange = (index, value) => {
@@ -250,8 +208,6 @@ const AdminMovieForm = ({ movie, onClose }) => {
     setEpisodes(newEpisodes);
   };
 
-  const hasAdminToken = !!localStorage.getItem('adminAuthToken');
-
   return (
     <div className="w-full h-auto bg-[#121826] rounded-xl flex flex-col font-sans mb-8">
 
@@ -269,13 +225,6 @@ const AdminMovieForm = ({ movie, onClose }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-
-        {!hasAdminToken && (
-          <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-4 py-3">
-            You're not logged in as an admin — Movie Video and Trailer uploads require it.{' '}
-            <a href="/admin/login" className="underline">Log in here</a> (poster/thumbnail/subtitle uploads don't need this).
-          </div>
-        )}
 
         {/* Top Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -357,7 +306,7 @@ const AdminMovieForm = ({ movie, onClose }) => {
             field="poster"
             formField="posterUrl"
             uploads={uploads}
-            onChange={handleSmallFileChange}
+            onChange={handleFileChange}
           />
 
           <SmallUploadField
@@ -367,7 +316,7 @@ const AdminMovieForm = ({ movie, onClose }) => {
             field="thumbnail"
             formField="backdropUrl"
             uploads={uploads}
-            onChange={handleSmallFileChange}
+            onChange={handleFileChange}
           />
 
           <SmallUploadField
@@ -377,31 +326,27 @@ const AdminMovieForm = ({ movie, onClose }) => {
             field="subtitle"
             formField="subtitleUrl"
             uploads={uploads}
-            onChange={handleSmallFileChange}
+            onChange={handleFileChange}
           />
 
           <LargeUploadField
             label="Movie Video"
-            hint="Video file, max 20GB. Resumable — safe to pause/close and come back."
+            hint="Video file, max 20GB."
             accept="video/*"
             field="movie"
             formField="videoUrl"
             uploads={uploads}
-            onChange={handleLargeFileChange}
-            onPause={pauseUpload}
-            onResume={resumeUpload}
+            onChange={handleFileChange}
           />
 
           <LargeUploadField
             label="Trailer Video"
-            hint="Video file, max 2GB. Resumable — safe to pause/close and come back."
+            hint="Video file, max 2GB."
             accept="video/*"
             field="trailer"
             formField="trailerUrl"
             uploads={uploads}
-            onChange={handleLargeFileChange}
-            onPause={pauseUpload}
-            onResume={resumeUpload}
+            onChange={handleFileChange}
           />
 
           <div className="flex items-center gap-3 pt-8">
@@ -416,7 +361,7 @@ const AdminMovieForm = ({ movie, onClose }) => {
         {/* Episodes Section */}
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-4">
-            <label className="text-sm text-gray-400">Episode Url <span className="text-red-500">*</span></label>
+            <label className="text-sm text-gray-400">Episode Url</label>
             <button
               type="button"
               onClick={addEpisode}
@@ -433,11 +378,10 @@ const AdminMovieForm = ({ movie, onClose }) => {
               </div>
 
               <input
-                required
                 type="text"
                 value={ep}
                 onChange={(e) => handleEpisodeChange(index, e.target.value)}
-                placeholder={`Episode ${index + 1} Url`}
+                placeholder={`Episode ${index + 1} Url (optional)`}
                 className="flex-1 bg-[#121826] border border-gray-700 text-white rounded px-4 py-2 outline-none focus:border-[#4aa5ff]"
               />
 
