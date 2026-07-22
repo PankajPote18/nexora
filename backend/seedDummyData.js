@@ -79,7 +79,7 @@ const run = async () => {
             { title: 'Trending Now', type: 'movies', shape: 'square', sorting_position: 2, status: true, shows: ['m4', 'm5', 'm19', '11', '16', 'm16', '18', '17'] },
             { title: 'Blockbuster Action Movies', type: 'movies', shape: 'rectangle', sorting_position: 3, status: true, shows: ['m1', 'm2', 'm3', 'm4', '16', '18', 'm17', 'm20'] },
             { title: 'Award-Winning Dramas', type: 'movies', shape: 'circle', sorting_position: 4, status: true, shows: ['m8', 'm9', 'm10', '17', '19', 'm18', 'm19'] },
-            { title: 'Nexora Originals', type: 'movies', shape: 'rectangle', sorting_position: 5, status: true, shows: ['m2', 'm7', '11', '16', '18', '19'] }
+            { title: 'ClickBuz Originals', type: 'movies', shape: 'rectangle', sorting_position: 5, status: true, shows: ['m2', 'm7', '11', '16', '18', '19'] }
         ];
 
         await Tray.bulkCreate(trays);

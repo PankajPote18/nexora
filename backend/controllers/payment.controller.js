@@ -44,7 +44,7 @@ exports.createPayment = async (req, res) => {
 
         const txnid = generateTxnId();
         const amount = Number(plan.discounted_price).toFixed(2);
-        const productinfo = `Nexora ${plan.name} Subscription`;
+        const productinfo = `ClickBuz ${plan.name} Subscription`;
         const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
 
         // Create the pending record first so we have an audit trail even if the

@@ -69,7 +69,7 @@ const Navbar = () => {
         {/* Logo */}
         {!isDetailPage && (
           <div className="flex items-center">
-            <span className="text-xl font-bold text-white tracking-tight">Nex<span className="text-[#00A8E1]">ora</span></span>
+            <span className="text-xl font-bold text-white tracking-tight">Click<span className="text-[#00A8E1]">buz</span></span>
           </div>
         )}
         {/* Search Bar (desktop & mobile-desktop) */}

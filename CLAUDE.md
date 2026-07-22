@@ -1,10 +1,10 @@
-# CLAUDE.md — Nexora OTT Platform
+# CLAUDE.md — ClickBuz OTT Platform
 
 This file is long-term project memory for Claude Code sessions. It was built by reading the actual source files in this repo (not generated from assumptions). Where something could not be verified, it is explicitly marked "unclear / needs verification."
 
 ## 1. Project Overview
 
-**Nexora** is an OTT (video streaming) web platform — a Netflix/JioHotstar-style clone. It has:
+**ClickBuz** is an OTT (video streaming) web platform — a Netflix/JioHotstar-style clone. It has:
 - A public-facing React SPA for browsing/watching movies & shows, managing a mock login, and viewing subscription plans.
 - An admin panel (same React app, under `/admin`) for managing movies, hero banners, trays (home page rows), subscription plans, genres/languages/age-certificates/mature-themes/badges/vendors (master data), and CMS-style settings pages/menus.
 - A Node.js/Express + MySQL (Sequelize) backend REST API serving both.
@@ -276,7 +276,7 @@ No `.env.example` file exists in either directory — if adding new env vars, co
 
 - Tailwind v4, configured entirely inline via `@theme` in `src/index.css` — brand colors are CSS custom properties: `--color-brand: #00A8E1` (the signature cyan/blue), `--color-brand-hover`, `--color-bg-dark: #02040a`, `--color-bg-card: #090d16`, `--color-bg-lighter`.
 - Dark theme only — no light mode, no theme toggle (the "🌙" icon in `AdminLayout` header is decorative/non-functional).
-- Public site uses `#02040a`/`#00A8E1` (Nexora brand); the admin panel uses a visually distinct palette (`#1c2333`/`#5a6ef7` indigo, `#22c55e` green for toggles/save actions, `#4aa5ff` accents) — **do not blend the two palettes**, they are intentionally different design systems (public consumer UI vs internal admin tool).
+- Public site uses `#02040a`/`#00A8E1` (ClickBuz brand); the admin panel uses a visually distinct palette (`#1c2333`/`#5a6ef7` indigo, `#22c55e` green for toggles/save actions, `#4aa5ff` accents) — **do not blend the two palettes**, they are intentionally different design systems (public consumer UI vs internal admin tool).
 - Responsive strategy: mobile-first Tailwind breakpoints (`md:`, `lg:`), plus manual UA/touch-detection JS (`navigator.userAgent`, `maxTouchPoints`) in `Navbar`, `HeroCarousel`, `DetailPage`, `PlayerPage` to distinguish "mobile", "mobile-desktop" (tablet-ish touch device at desktop width), and "desktop" — this is a deliberate, already-tuned pattern; if adding new responsive components, prefer reusing this `deviceMode` pattern over inventing a new one.
 - **Preserve existing UI unless explicitly asked to redesign.** Both the public site's cinematic dark styling and the admin panel's dashboard styling are deliberate and already reviewed/accepted — do not restyle in the course of unrelated feature work.
 

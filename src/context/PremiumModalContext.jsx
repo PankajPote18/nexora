@@ -32,7 +32,7 @@ export const PremiumModalProvider = ({ children }) => {
             </div>
             <h3 className="text-xl font-bold text-white text-center mb-2">Premium Content</h3>
             <p className="text-gray-400 text-sm text-center mb-8">
-              You need an active subscription to watch this movie. Unlock unlimited access to Nexora today!
+              You need an active subscription to watch this movie. Unlock unlimited access to ClickBuz today!
             </p>
             <button onClick={handleSubscribe} className="w-full py-3 bg-[#00A8E1] hover:bg-[#008bc0] text-white rounded-lg font-bold transition shadow-lg">
               Explore Plans

@@ -26,7 +26,7 @@ const run = async () => {
         const pages = [
             { title: 'Terms of Service', slug: 'terms-of-service', short_description: 'Read our terms.', full_content: '<h2>Terms of Service</h2><p>Here are our terms of service...</p>' },
             { title: 'Privacy Policy', slug: 'privacy-policy', short_description: 'How we handle your data.', full_content: '<h2>Privacy Policy</h2><p>Your privacy is important to us...</p>' },
-            { title: 'About Us', slug: 'about-us', short_description: 'Learn about Nexora.', full_content: '<h2>About Us</h2><p>Nexora is a premium OTT platform...</p>' },
+            { title: 'About Us', slug: 'about-us', short_description: 'Learn about ClickBuz.', full_content: '<h2>About Us</h2><p>ClickBuz is a premium OTT platform...</p>' },
             { title: 'Help Center', slug: 'help-center', short_description: 'Get support here.', full_content: '<h2>Help Center</h2><p>Contact our support team...</p>' }
         ];
         await SettingsPage.bulkCreate(pages);

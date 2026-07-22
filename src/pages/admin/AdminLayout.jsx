@@ -93,7 +93,7 @@ const AdminLayout = () => {
       {/* Admin Sidebar */}
       <div className={`fixed inset-y-0 left-0 w-64 bg-[#141a29] border-r border-gray-800 flex flex-col shrink-0 shadow-2xl z-40 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 h-20 flex items-center justify-between border-b border-gray-800/50 shrink-0">
-          <h2 className="text-xl md:text-2xl font-bold text-[#4aa5ff] tracking-wider">Nexora Admin</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-[#4aa5ff] tracking-wider">ClickBuz Admin</h2>
           <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
             <X size={24} />
           </button>

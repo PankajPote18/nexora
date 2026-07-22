@@ -224,7 +224,7 @@ const PlansPage = () => {
       const res = await paymentsApi.create({
         plan_id: testPlan.id,
         customer_name: 'PayU Test User',
-        customer_email: 'payu-test@nexora.test',
+        customer_email: 'payu-test@clickbuz.test',
         customer_phone: customerPhone || '9999999999',
       });
       setTestPaymentId(res.paymentId);

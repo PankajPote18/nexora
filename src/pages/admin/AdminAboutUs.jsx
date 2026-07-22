@@ -17,10 +17,10 @@ const AdminAboutUs = () => {
   const [fields, setFields] = useState([
     { id: 'version', label: 'version', value: '1.0.1', isLong: false, status: true },
     { id: 'company_name', label: 'company_name', value: 'Dream Stream Limited', isLong: false, status: true },
-    { id: 'email', label: 'email', value: 'contact@nexora.com', isLong: false, status: true },
-    { id: 'website', label: 'website', value: 'https://nexora.com', isLong: false, status: true },
+    { id: 'email', label: 'email', value: 'contact@clickbuz.com', isLong: false, status: true },
+    { id: 'website', label: 'website', value: 'https://clickbuz.com', isLong: false, status: true },
     { id: 'contact', label: 'contact', value: '+1 (555) 123-4567 (9 AM to 5 PM)', isLong: false, status: true },
-    { id: 'about_us', label: 'about_us', value: 'Nexora is a premium streaming destination dedicated to providing the finest range of cinematic content across all categories.', isLong: true, status: true },
+    { id: 'about_us', label: 'about_us', value: 'ClickBuz is a premium streaming destination dedicated to providing the finest range of cinematic content across all categories.', isLong: true, status: true },
   ]);
 
   const toggleStatus = (id) => {
