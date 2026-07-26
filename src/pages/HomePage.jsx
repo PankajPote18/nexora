@@ -3,38 +3,46 @@ import { useState, useEffect } from 'react';
 import HeroCarousel from '../components/HeroCarousel';
 
 import MovieRow from '../components/MovieRow';
+import { HomeSkeleton } from '../components/Skeletons';
+
+const EMPTY_DATA = { hero: [], continueWatching: [], trays: [] };
+
+// Read the cache synchronously in the initializer (not in an effect) so a
+// repeat visit paints the previous page instantly on the very first render
+// instead of guaranteeing one "Loading…" frame before the effect runs.
+const readCachedData = () => {
+  try {
+    const cached = localStorage.getItem('home_page_data_redesign');
+    return cached ? JSON.parse(cached) : EMPTY_DATA;
+  } catch (e) {
+    console.error("Cache parsing error", e);
+    return EMPTY_DATA;
+  }
+};
 
 const HomePage = () => {
 
-  const [data, setData] = useState({
-    hero: [],
-    continueWatching: [],
-    trays: []
+  const [data, setData] = useState(readCachedData);
+
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('home_page_data_redesign');
+    } catch (e) {
+      return true;
+    }
   });
 
-  const [loading, setLoading] = useState(true);
+  // DetailPage/PlayerPage are route-split out of the initial bundle (see
+  // App.jsx) so a first-time visitor to "/" doesn't pay for them upfront.
+  // Rather than blanket-prefetching both from here on idle (which measurably
+  // hurt Lighthouse's TTI — the background chunk fetches kept resetting the
+  // "quiet network" window that metric waits for), each card now prefetches
+  // DetailPage itself on hover/focus (see MovieCard.jsx), and DetailPage
+  // prefetches PlayerPage once it's actually opened (see DetailPage.jsx).
 
   useEffect(() => {
 
-    // 1. Instantly load from cache if available (0ms load time)
-
-    const cachedData = localStorage.getItem('home_page_data_redesign');
-
-    if (cachedData) {
-
-      try {
-
-        setData(JSON.parse(cachedData));
-
-        setLoading(false);
-
-      } catch (e) {
-
-        console.error("Cache parsing error", e);
-
-      }
-
-    }
+    // 1. Cache (if any) is already painted from the useState initializer.
 
     // 2. Fetch fresh data in the background
 
@@ -173,7 +181,7 @@ const HomePage = () => {
 
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-white text-xl bg-bg-dark">Loading...</div>;
+  if (loading) return <HomeSkeleton />;
 
   return (
     <div className="w-full bg-bg-dark relative">
@@ -182,13 +190,13 @@ const HomePage = () => {
       {/* Dynamic Rows aligned tight to hero without overlapping content */}
       <div className="flex flex-col gap-y-4 md:gap-y-6 relative z-20 pb-12 mt-4 md:mt-6">
         <MovieRow title="Continue Watching" movies={data.continueWatching} cardType="continue_watching" />
-        
+
         {data.trays?.map((tray) => (
-            <MovieRow 
-                key={tray.id} 
-                title={tray.title} 
-                movies={tray.movies} 
-                cardType={tray.shape} 
+            <MovieRow
+                key={tray.id}
+                title={tray.title}
+                movies={tray.movies}
+                cardType={tray.shape}
             />
         ))}
 

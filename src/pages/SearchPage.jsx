@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
+import { prefetchDetailPage } from '../utils/prefetch';
+
+const CARD_WIDTHS = [320, 480, 640];
+const CARD_SIZES = '(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 18vw';
 
 const SearchPage = () => {
   const [query, setQuery] = useState('');
@@ -59,12 +64,26 @@ const SearchPage = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
               {filteredMovies.map((movie) => (
-                <Link to={`/movie/${movie.id}`} key={movie.id} className="flex flex-col group cursor-pointer">
+                <Link
+                  to={`/movie/${movie.id}`}
+                  key={movie.id}
+                  className="flex flex-col group cursor-pointer"
+                  onMouseEnter={prefetchDetailPage}
+                  onFocus={prefetchDetailPage}
+                  onTouchStart={prefetchDetailPage}
+                >
                   {/* Video Aspect Card */}
                   <div className="aspect-video bg-bg-card rounded-xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center mb-2.5 transition-all duration-300 group-hover:scale-105 group-hover:border-[#00A8E1]/30 group-hover:shadow-xl shadow-black/80">
-                    <img 
-                      src={movie.backdropUrl || movie.posterUrl} 
-                      alt={movie.title} 
+                    <img
+                      src={bunnyImageUrl(movie.backdropUrl || movie.posterUrl, 640)}
+                      srcSet={bunnyImageSrcSet(movie.backdropUrl || movie.posterUrl, CARD_WIDTHS)}
+                      sizes={CARD_SIZES}
+                      alt={movie.title}
+                      width={640}
+                      height={360}
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="auto"
                       className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300"
                       onError={(e) => {
                         e.target.onerror = null;

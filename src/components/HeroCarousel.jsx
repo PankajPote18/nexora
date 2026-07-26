@@ -7,12 +7,25 @@ import 'swiper/css/navigation';
 import { Plus, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { preload } from 'react-dom';
+import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
+import { prefetchDetailPage } from '../utils/prefetch';
+
+const HERO_WIDTHS = [800, 1200, 1920];
 
 const HeroCarousel = ({ movies, showSearch = false }) => {
   const [prevEl, setPrevEl] = useState(null);
   const [nextEl, setNextEl] = useState(null);
   const navigate = useNavigate();
   const [deviceMode, setDeviceMode] = useState('desktop');
+  // Fade effect stacks every slide's <img> in the exact same box, so the
+  // browser's native loading="lazy" viewport heuristic treats all of them as
+  // "visible" and fetches every hero image immediately — the worst possible
+  // outcome for LCP. Instead we only ever render a real <img src> for the
+  // active slide and its immediate neighbor (matches Swiper's own
+  // lazyPreloadPrevNext=1 recommendation); everything else stays an empty,
+  // same-size placeholder until the user scrolls near it.
+  const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     const handleResize = () => {
@@ -41,6 +54,16 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
   }, []);
 
   if (!movies || movies.length === 0) return null;
+
+  // Preload only the current (first) hero image — the actual LCP
+  // candidate — as early as possible. Safe to call directly during render:
+  // React de-dupes this against the same href automatically, and it never
+  // re-fires for subsequent slides as activeIndex changes (those are
+  // handled by the existing eager/lazy + fetchPriority logic below).
+  const currentHeroUrl = movies[0].backdropUrl || movies[0].posterUrl;
+  if (currentHeroUrl) {
+    preload(currentHeroUrl, { as: 'image', fetchPriority: 'high' });
+  }
 
   // Determine heights dynamically
   let heightClass = "h-[55vh] md:h-[65vh] lg:h-[68vh]";
@@ -85,20 +108,37 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
             clickable: true,
             el: '.custom-hero-pagination',
           }}
+          onSlideChange={(swiper) => setActiveIndex(swiper.activeIndex)}
           className="w-full h-full"
         >
-          {movies.map((movie) => (
+          {movies.map((movie, index) => {
+            const shouldLoad = Math.abs(index - activeIndex) <= 1 || (activeIndex === 0 && index === movies.length - 1);
+            return (
             <SwiperSlide key={movie.id} className="relative w-full h-full bg-[#02040a]">
               <div className="absolute inset-0 w-full h-full">
-                <img
-                  src={movie.backdropUrl || movie.posterUrl}
-                  alt={movie.title}
-                  className="w-full h-full object-cover object-center"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=1920&auto=format&fit=crop';
-                  }}
-                />
+                {shouldLoad && (
+                  <img
+                    src={bunnyImageUrl(movie.backdropUrl || movie.posterUrl, 1920)}
+                    srcSet={bunnyImageSrcSet(movie.backdropUrl || movie.posterUrl, HERO_WIDTHS)}
+                    sizes="100vw"
+                    alt={movie.title}
+                    width={1920}
+                    height={1080}
+                    className="w-full h-full object-cover object-center"
+                    // Only the very first slide is a realistic LCP candidate
+                    // (it's painted before any interaction) — load it eagerly
+                    // at high priority; every other slide (including this
+                    // one's own preloaded neighbors) can decode off the main
+                    // thread without blocking anything.
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    fetchPriority={index === 0 ? 'high' : 'auto'}
+                    decoding="async"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=1920&auto=format&fit=crop';
+                    }}
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-r from-[#02040a] via-[#02040a]/40 to-transparent w-full md:w-2/3 z-10"></div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#02040a] via-[#02040a]/40 to-transparent z-10"></div>
               </div>
@@ -109,6 +149,9 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
                   <div className="flex flex-wrap items-center gap-3 md:gap-4">
                     <Link
                       to={`/movie/${movie.id}`}
+                      onMouseEnter={prefetchDetailPage}
+                      onFocus={prefetchDetailPage}
+                      onTouchStart={prefetchDetailPage}
                       className={`flex-shrink-0 flex items-center justify-center bg-white text-black hover:bg-gray-200 font-bold rounded-lg transition shadow-lg cursor-pointer ${deviceMode === 'mobile-desktop'
                         ? 'px-8 py-3 text-base'
                         : 'px-5 md:px-8 py-2 md:py-3.5 text-sm md:text-base'
@@ -128,7 +171,7 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
                 </div>
               </div>
             </SwiperSlide>
-          ))}
+          );})}
         </Swiper>
       </div>
 

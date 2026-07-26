@@ -3,6 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { Play, Plus } from 'lucide-react';
 import { usePremiumModal } from '../context/PremiumModalContext';
 import MovieRow from '../components/MovieRow';
+import { DetailSkeleton } from '../components/Skeletons';
+import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
+import { prefetchPlayerPage } from '../utils/prefetch';
+
+const BACKDROP_WIDTHS = [800, 1200, 1920];
 
 const DetailPage = () => {
   const { id } = useParams();
@@ -27,13 +32,34 @@ const DetailPage = () => {
     }
   };
 
+  // Almost everyone who opens a Detail page is about to hit "Watch now" —
+  // prefetch PlayerPage's chunk once we're actually here (not from Home),
+  // during idle time so it never competes with this page's own render.
+  useEffect(() => {
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(prefetchPlayerPage);
+      return () => window.cancelIdleCallback(idleId);
+    }
+    const timeoutId = setTimeout(prefetchPlayerPage, 1500);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   useEffect(() => {
     window.scrollTo(0, 0);
 
     const fetchMovie = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/movies/${id}`);
+        // Fire both requests in parallel instead of waiting on the movie
+        // fetch before conditionally kicking off the related-fallback one —
+        // we don't know upfront whether the movie response will include
+        // `related`, so the small chance of an unneeded second request is
+        // worth trading away the sequential round-trip.
+        const [response, allRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/movies/${id}`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/movies`).catch(() => null),
+        ]);
+
         if (!response.ok) {
           throw new Error("Movie not found");
         }
@@ -41,21 +67,12 @@ const DetailPage = () => {
 
         setMovie(data);
 
-        // If the backend doesn't return related movies, fetch all and pick 6
         if (data.related && data.related.length > 0) {
           setRelated(data.related);
-        } else {
-          try {
-            const allRes = await fetch(`${import.meta.env.VITE_API_URL}/api/movies`);
-            if (allRes.ok) {
-              const allMovies = await allRes.json();
-              // Filter out the current movie and take up to 6
-              const filtered = allMovies.filter(m => m.id.toString() !== id.toString());
-              setRelated(filtered.slice(0, 6));
-            }
-          } catch (err) {
-            console.error("Could not fetch related fallback:", err);
-          }
+        } else if (allRes?.ok) {
+          const allMovies = await allRes.json();
+          const filtered = allMovies.filter(m => m.id.toString() !== id.toString());
+          setRelated(filtered.slice(0, 6));
         }
       } catch (error) {
         console.error("Error fetching movie details:", error);
@@ -67,7 +84,7 @@ const DetailPage = () => {
     fetchMovie();
   }, [id]);
 
-  if (loading) return <div className="min-h-screen bg-[#02040a] text-white flex items-center justify-center text-xl">Loading...</div>;
+  if (loading) return <DetailSkeleton />;
   if (!movie) return <div className="min-h-screen bg-[#02040a] text-white flex items-center justify-center text-xl">Movie not found</div>;
 
   return (
@@ -78,9 +95,16 @@ const DetailPage = () => {
         <div className="w-full lg:w-[55%] xl:w-[55%] shrink-0 flex justify-center lg:justify-start">
           <div className="w-full aspect-video bg-[#090d16] rounded-xl lg:rounded-2xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center shadow-2xl">
             <img
-              src={movie.backdropUrl || movie.posterUrl}
+              src={bunnyImageUrl(movie.backdropUrl || movie.posterUrl, 1200)}
+              srcSet={bunnyImageSrcSet(movie.backdropUrl || movie.posterUrl, BACKDROP_WIDTHS)}
+              sizes="(max-width: 1024px) 100vw, 55vw"
               alt={movie.title}
+              width={1200}
+              height={675}
               className="absolute inset-0 w-full h-full object-cover"
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
             />
           </div>
         </div>

@@ -61,6 +61,12 @@ const uploadStreamToBunny = (fieldname, filename, fileStream, mimetype) => {
                 headers: {
                     AccessKey: ACCESS_KEY,
                     'Content-Type': mimetype || 'application/octet-stream',
+                    // Every stored filename is unique (timestamp + random
+                    // suffix, see buildFilename) and never overwritten, so
+                    // it's safe to tell the CDN/browsers to cache it
+                    // forever — this is what the Pull Zone serves back on
+                    // GET as the origin's Cache-Control.
+                    'Cache-Control': 'public, max-age=31536000, immutable',
                 },
             },
             (res) => {

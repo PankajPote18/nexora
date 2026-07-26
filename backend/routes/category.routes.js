@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const categoryController = require('../controllers/category.controller');
+const cacheControl = require('../middleware/cacheControl.middleware');
 
-router.get('/', categoryController.getAll);
-router.get('/:id', categoryController.getOne);
+router.get('/', cacheControl(), categoryController.getAll);
+router.get('/:id', cacheControl(), categoryController.getOne);
 router.post('/', categoryController.create);
 router.put('/:id', categoryController.update);
 router.delete('/:id', categoryController.remove);

@@ -1,39 +1,52 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
-import HomePage from './pages/HomePage';
-import DetailPage from './pages/DetailPage';
-import SettingsPage from './pages/SettingsPage';
-import SettingsDetailPage from './pages/SettingsDetailPage';
-import SearchPage from './pages/SearchPage';
-import LoginPage from './pages/LoginPage';
-import OtpPage from './pages/OtpPage';
-import PlansPage from './pages/PlansPage';
-import AdminLayout from './pages/admin/AdminLayout';
-import AdminLogin from './pages/admin/AdminLogin';
-
-import AdminMovies from './pages/admin/AdminMovies';
-import AdminHeroBanners from './pages/admin/AdminHeroBanners';
-import AdminTrays from './pages/admin/AdminTrays';
-import AdminSubscriptions from './pages/admin/AdminSubscriptions';
-import AdminAboutUs from './pages/admin/AdminAboutUs';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminPages from './pages/admin/AdminPages';
-import AdminGenres from './pages/admin/AdminGenres';
-import AdminLanguages from './pages/admin/AdminLanguages';
-import AdminAgeCertificates from './pages/admin/AdminAgeCertificates';
-import AdminMatureThemes from './pages/admin/AdminMatureThemes';
-import AdminBadges from './pages/admin/AdminBadges';
-import PlayerPage from './pages/PlayerPage';
 import ScrollToTop from './components/ScrollToTop';
 import { PremiumModalProvider } from './context/PremiumModalContext';
+
+// Route-based code splitting: HomePage stays eager (it's the landing page,
+// no benefit to lazy-loading the page a first-time visitor lands on
+// directly), everything else — including the entire admin CMS — is split
+// into its own chunk so a public visitor never downloads admin code.
+import HomePage from './pages/HomePage';
+const DetailPage = lazy(() => import('./pages/DetailPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const SettingsDetailPage = lazy(() => import('./pages/SettingsDetailPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const OtpPage = lazy(() => import('./pages/OtpPage'));
+const PlansPage = lazy(() => import('./pages/PlansPage'));
+const PlayerPage = lazy(() => import('./pages/PlayerPage'));
+
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminMovies = lazy(() => import('./pages/admin/AdminMovies'));
+const AdminHeroBanners = lazy(() => import('./pages/admin/AdminHeroBanners'));
+const AdminTrays = lazy(() => import('./pages/admin/AdminTrays'));
+const AdminSubscriptions = lazy(() => import('./pages/admin/AdminSubscriptions'));
+const AdminAboutUs = lazy(() => import('./pages/admin/AdminAboutUs'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminPages = lazy(() => import('./pages/admin/AdminPages'));
+const AdminGenres = lazy(() => import('./pages/admin/AdminGenres'));
+const AdminLanguages = lazy(() => import('./pages/admin/AdminLanguages'));
+const AdminAgeCertificates = lazy(() => import('./pages/admin/AdminAgeCertificates'));
+const AdminMatureThemes = lazy(() => import('./pages/admin/AdminMatureThemes'));
+const AdminBadges = lazy(() => import('./pages/admin/AdminBadges'));
+
+const RouteFallback = () => (
+  <div className="min-h-dvh flex items-center justify-center bg-bg-dark text-white text-sm">
+    Loading…
+  </div>
+);
 
 function App() {
   return (
     <Router>
       <ScrollToTop />
       <PremiumModalProvider>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Player Route - Standalone Fullscreen */}
           <Route path="/player/:id" element={<PlayerPage />} />
@@ -72,19 +85,25 @@ function App() {
               <Sidebar />
               <Navbar />
               <main className="flex-grow overflow-x-hidden w-full">
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/search" element={<SearchPage />} />
-                  <Route path="/movie/:id" element={<DetailPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/page/:slug" element={<SettingsDetailPage />} />
-                  <Route path="/plans" element={<PlansPage />} />
-                </Routes>
+                {/* Inner Suspense boundary: only the routed content pauses
+                    while its chunk loads — Navbar/Sidebar/Footer stay put
+                    instead of the whole shell flashing to a loading screen. */}
+                <Suspense fallback={<div className="min-h-[60vh]" />}>
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/search" element={<SearchPage />} />
+                    <Route path="/movie/:id" element={<DetailPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/page/:slug" element={<SettingsDetailPage />} />
+                    <Route path="/plans" element={<PlansPage />} />
+                  </Routes>
+                </Suspense>
               </main>
               <Footer />
             </div>
           } />
         </Routes>
+        </Suspense>
       </PremiumModalProvider>
     </Router>
   );

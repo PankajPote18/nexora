@@ -6,12 +6,13 @@ const {
     ageCertificateController, 
     matureThemeController, 
     badgeController, 
-    vendorController 
+    vendorController
 } = require('../controllers/master.controller');
+const cacheControl = require('../middleware/cacheControl.middleware');
 
 const createRoutes = (path, controller) => {
-    router.get(path, controller.getAll);
-    router.get(`${path}/:id`, controller.getById);
+    router.get(path, cacheControl(), controller.getAll);
+    router.get(`${path}/:id`, cacheControl(), controller.getById);
     router.post(path, controller.create);
     router.put(`${path}/:id`, controller.update);
     router.delete(`${path}/:id`, controller.delete);

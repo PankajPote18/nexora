@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const compression = require('compression');
 
 const app = express();
 
 // Middleware
+app.use(compression()); // gzip/br every JSON response — was previously sent uncompressed
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

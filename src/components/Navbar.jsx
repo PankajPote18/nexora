@@ -9,8 +9,17 @@ const Navbar = () => {
   const location = useLocation();
 
   useEffect(() => {
+    // rAF-throttled: raw 'scroll' fires far more often than the browser can
+    // paint, and each call was triggering a setState — coalesce to at most
+    // one state update per animation frame.
+    let ticking = false;
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 0);
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setIsScrolled(window.scrollY > 0);
+        ticking = false;
+      });
     };
 
     window.addEventListener('scroll', handleScroll);

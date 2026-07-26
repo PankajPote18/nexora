@@ -1,6 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Settings, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, VideoOff } from 'lucide-react';
+import { PlayerSkeleton } from '../components/Skeletons';
+
+// Portrait-mode detection is read synchronously (both here and as the
+// useState initializer below) instead of only inside a post-mount effect.
+// Computing it in an effect meant the very first paint always used the
+// normal (non-rotated) layout, then flipped to the fixed/rotated one a
+// frame later on any portrait mobile device — a huge, measured layout
+// shift (CLS ~0.5) for a transition that has nothing to do with data
+// loading. The rotated layout is now correct from the first render;
+// resize/orientationchange are still tracked live for actual device
+// rotation, unchanged.
+const computeIsPortrait = () => {
+  if (typeof window === 'undefined') return false;
+  const isMobile = window.innerWidth < 1024 || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  return isMobile && window.innerHeight > window.innerWidth;
+};
 
 const PlayerPage = () => {
   const { id } = useParams();
@@ -16,19 +32,17 @@ const PlayerPage = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [movie, setMovie] = useState(null);
   const [isLoadingMovie, setIsLoadingMovie] = useState(true);
-  const [isPortrait, setIsPortrait] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(computeIsPortrait);
   const controlsTimeoutRef = useRef(null);
 
   const hasVideo = Boolean(movie?.videoUrl);
 
-  // Monitor portrait mode orientation on mobile touch devices
+  // Keep tracking live orientation/resize changes — the initial value is
+  // now already correct (see computeIsPortrait above), so this only needs
+  // to react to changes after mount.
   useEffect(() => {
-    const checkOrientation = () => {
-      const isMobile = window.innerWidth < 1024 || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-      setIsPortrait(isMobile && window.innerHeight > window.innerWidth);
-    };
+    const checkOrientation = () => setIsPortrait(computeIsPortrait());
 
-    checkOrientation();
     window.addEventListener('resize', checkOrientation);
     window.addEventListener('orientationchange', checkOrientation);
 
@@ -251,6 +265,7 @@ const PlayerPage = () => {
           ref={videoRef}
           className="w-full h-full object-contain"
           src={movie.videoUrl}
+          preload="metadata"
           onTimeUpdate={handleTimeUpdate}
           onEnded={() => setIsPlaying(false)}
           onPlay={() => setIsPlaying(true)}
@@ -261,6 +276,10 @@ const PlayerPage = () => {
           Your browser does not support the video tag.
         </video>
       )}
+
+      {/* Loading placeholder — same fixed-size container either way, so
+          swapping it out for the video/empty-state carries no CLS risk. */}
+      {isLoadingMovie && <PlayerSkeleton />}
 
       {/* Empty state — shown once the movie has loaded and has no videoUrl */}
       {!hasVideo && !isLoadingMovie && (
