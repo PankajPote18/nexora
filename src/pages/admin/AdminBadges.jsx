@@ -7,7 +7,8 @@ import {
   Loader2,
   Check,
   X,
-  Palette
+  Palette,
+  ChevronDown
 } from 'lucide-react';
 
 const CustomToggle = ({ isOn, onToggle }) => (
