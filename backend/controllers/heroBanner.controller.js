@@ -3,7 +3,9 @@ const crypto = require('crypto');
 
 exports.getAll = async (req, res) => {
     try {
+        const where = req.query.active === '1' ? { status: true } : {};
         const banners = await HeroBanner.findAll({
+            where,
             include: [{ model: Movie, as: 'show', attributes: ['title'] }],
             order: [['sorting_position', 'ASC']]
         });

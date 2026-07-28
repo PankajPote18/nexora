@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, Loader2, X } from 'lucide-react';
+import { moviesApi } from '../../services/api';
 
 const AdminTrayForm = ({ tray, totalTrays, onClose }) => {
   const maxSorting = tray ? Math.max(totalTrays, 1) : totalTrays + 1;
@@ -20,10 +21,10 @@ const AdminTrayForm = ({ tray, totalTrays, onClose }) => {
   useEffect(() => {
     const fetchMovies = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/movies`);
-        if (res.ok) {
-          setMovies(await res.json());
-        }
+        // This picker needs every movie to choose from, not a paginated
+        // page — request a high limit against the now-paginated endpoint.
+        const response = await moviesApi.getAll({ limit: 500 });
+        setMovies(response.data);
       } catch (e) {
         console.error(e);
       }

@@ -23,6 +23,8 @@ dist-ssr
 .env
 .env.*
 backend/.env
+# ...except the names-only reference file, which should be committed.
+!backend/.env.example
 
 # Editor directories and files
 .vscode/*
@@ -34,3 +36,23 @@ backend/.env
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code project files — agent configs/local settings, not needed to run the app
+.claude/
+
+# AI assistant project memory — not needed to run the app
+CLAUDE.md
+
+# Testing — not needed to run the app
+/e2e/
+/load-tests/
+playwright.config.js
+
+# Project readme — not needed to run the app
+/README.md
+
+# Leftover local-disk upload artifacts from a removed pre-Bunny-Storage
+# upload architecture (see CLAUDE.md §19) — current upload.middleware.js
+# streams everything to Bunny Storage and never writes to local disk, so
+# nothing under here is referenced by any code path anymore.
+backend/uploads/

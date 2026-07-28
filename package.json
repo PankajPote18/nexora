@@ -10,7 +10,19 @@
     "preview": "vite preview",
     "test:e2e": "playwright test --grep-invert @live",
     "test:e2e:live": "playwright test --grep @live",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "load:smoke": "k6 run -e LOAD_PROFILE=smoke load-tests/tests/user-journey.js",
+    "load:light": "k6 run -e LOAD_PROFILE=light load-tests/tests/user-journey.js",
+    "load:medium": "k6 run -e LOAD_PROFILE=medium load-tests/tests/user-journey.js",
+    "load:heavy": "k6 run -e LOAD_PROFILE=heavy load-tests/tests/user-journey.js",
+    "load:production": "k6 run -e LOAD_PROFILE=production load-tests/tests/user-journey.js",
+    "load:stress": "k6 run -e LOAD_PROFILE=stress load-tests/tests/user-journey.js",
+    "load:homepage": "k6 run load-tests/tests/homepage.js",
+    "load:api": "k6 run load-tests/tests/api-endpoints.js",
+    "load:movies": "k6 run load-tests/tests/movie-listing.js",
+    "load:movie-details": "k6 run load-tests/tests/movie-details.js",
+    "load:search": "k6 run load-tests/tests/search.js",
+    "load:categories": "k6 run load-tests/tests/category-browsing.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",

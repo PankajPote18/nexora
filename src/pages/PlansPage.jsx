@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { plansApi, paymentsApi } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 // Polling cadence/timeout for checking payment status after the user is sent
 // to their UPI app — a browser redirect back isn't reliable for intent-based
@@ -59,16 +60,17 @@ const PlansPage = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  // Pre-fill whatever contact info we already have (the app only ever
-  // collects a phone number today, via the mocked OTP login).
+  const { phoneNumber: sessionPhoneNumber } = useAuth();
+
+  // Pre-fill the phone field from the authenticated session — this checkout
+  // form expects a plain 10-digit Indian mobile number (see the input's
+  // maxLength below). Strip every non-digit char (not just a leading
+  // "+<country code>" match) and take the last 10 digits: country codes
+  // vary in length (+91 is 2 digits, +971 is 3), and a fixed-width prefix
+  // match silently ate one digit of the real number for any 1-2 digit code.
   useEffect(() => {
-    try {
-      const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
-      if (storedUser?.phone) setCustomerPhone(storedUser.phone);
-    } catch {
-      // ignore malformed localStorage value
-    }
-  }, []);
+    if (sessionPhoneNumber) setCustomerPhone(sessionPhoneNumber.replace(/\D/g, '').slice(-10));
+  }, [sessionPhoneNumber]);
 
   // If we've just been redirected back from a PayU surl/furl callback, resume
   // tracking that transaction. The txnid is just an identifier — the actual

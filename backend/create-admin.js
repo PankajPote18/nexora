@@ -2,7 +2,6 @@
 // Needed because POST /api/auth/register always creates role:'user', and
 // there is no other way to get an admin JWT (see src/pages/admin/AdminLogin.jsx).
 // Usage: node create-admin.js <email> <password> [name]
-require('dotenv').config();
 const bcrypt = require('bcrypt');
 const { sequelize, User } = require('./models');
 

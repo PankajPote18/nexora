@@ -9,6 +9,7 @@ import {
   X
 } from 'lucide-react';
 import AdminMovieForm from './AdminMovieForm';
+import { moviesApi } from '../../services/api';
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button
@@ -31,16 +32,36 @@ const AdminMovies = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingMovie, setEditingMovie] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [editLoadingId, setEditLoadingId] = useState(null);
+
+  // The table row only has the slim list fields (no description/cast — see
+  // movie.controller.js LIST_ATTRIBUTES), so fetch the full record before
+  // opening the edit form, otherwise the form would silently show a blank
+  // description/cast for an existing movie.
+  const handleEditClick = async (movie) => {
+    setEditLoadingId(movie.id);
+    try {
+      const fullMovie = await moviesApi.getOne(movie.id);
+      setEditingMovie(fullMovie);
+      setShowForm(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEditLoadingId(null);
+    }
+  };
 
   // Local state for mock toggles since they aren't in the DB yet
   const [localStatus, setLocalStatus] = useState({});
 
   const fetchMovies = () => {
     setLoading(true);
-    fetch(`${import.meta.env.VITE_API_URL}/api/movies`)
-      .then(res => res.json())
-      .then(data => {
-        setMovies(data);
+    // Admin's movie table is still a flat searchable list (no pagination UI,
+    // matching the existing admin UX) — request a high limit against the now
+    // paginated endpoint rather than adding pagination controls here.
+    moviesApi.getAll({ limit: 500 })
+      .then(response => {
+        setMovies(response.data);
         setLoading(false);
       })
       .catch(err => {
@@ -204,8 +225,8 @@ const AdminMovies = () => {
                       <td className="px-6 py-4 text-gray-400 text-sm">{movie.ageRating || '—'}</td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-4 items-center">
-                          <button onClick={() => { setEditingMovie(movie); setShowForm(true); }} className="text-gray-400 hover:text-white transition-colors">
-                            <Edit2 size={16} />
+                          <button onClick={() => handleEditClick(movie)} disabled={editLoadingId === movie.id} className="text-gray-400 hover:text-white transition-colors disabled:opacity-50">
+                            {editLoadingId === movie.id ? <Loader2 size={16} className="animate-spin" /> : <Edit2 size={16} />}
                           </button>
                           <button onClick={() => setDeleteId(movie.id)} className="text-pink-500 hover:text-pink-400 transition-colors">
                             <Trash2 size={16} />

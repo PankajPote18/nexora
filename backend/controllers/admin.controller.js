@@ -3,9 +3,11 @@ const { User, Movie, SubscriptionPlan, SettingsPage } = require('../models');
 // Dashboard Analytics
 exports.getDashboardData = async (req, res) => {
     try {
-        const totalUsers = await User.count();
-        const totalMovies = await Movie.count();
-        const activeSubscriptions = await SubscriptionPlan.count({ where: { status: true } });
+        const [totalUsers, totalMovies, activeSubscriptions] = await Promise.all([
+            User.count(),
+            Movie.count(),
+            SubscriptionPlan.count({ where: { status: true } })
+        ]);
 
         res.json({
             metrics: {

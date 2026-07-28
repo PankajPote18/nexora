@@ -1,4 +1,3 @@
-require('dotenv').config();
 const { sequelize } = require('./config/db.config');
 const { Genre, Language, AgeCertificate, MatureTheme, Badge, Vendor } = require('./models');
 

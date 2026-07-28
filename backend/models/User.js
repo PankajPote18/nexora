@@ -14,7 +14,13 @@ const User = sequelize.define('User', {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        // A fixed name (instead of `unique: true`) so sync({ alter: true })
+        // matches this to the existing DB index by name on every server
+        // boot rather than concluding it's missing and adding another one.
+        // Without this, every restart adds a new duplicate unique index —
+        // MySQL allows at most 64 keys per table, and this table hit that
+        // ceiling in production after enough restarts (fixed 2026-07-27).
+        unique: 'users_email_unique'
     },
     email_verified_at: {
         type: DataTypes.DATE,

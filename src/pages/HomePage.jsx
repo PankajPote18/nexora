@@ -4,6 +4,7 @@ import HeroCarousel from '../components/HeroCarousel';
 
 import MovieRow from '../components/MovieRow';
 import { HomeSkeleton } from '../components/Skeletons';
+import { moviesApi } from '../services/api';
 
 const EMPTY_DATA = { hero: [], continueWatching: [], trays: [] };
 
@@ -50,16 +51,14 @@ const HomePage = () => {
 
       try {
 
-        const [categoriesRes, moviesRes, heroBannersRes, traysRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/categories`, { cache: 'no-store' }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/movies`, { cache: 'no-store' }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners`, { cache: 'no-store' }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/trays`, { cache: 'no-store' })
+        // Hero banners and trays are small, bounded lists — fetch them first
+        // (server-side ?active=1 filtering instead of pulling every inactive
+        // row just to discard it client-side) so we know exactly which movie
+        // ids the rest of the page actually needs before fetching any movies.
+        const [heroBannersRes, traysRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/hero-banners?active=1`, { cache: 'no-store' }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/trays?active=1`, { cache: 'no-store' })
         ]);
-
-
-
-        const movies = await moviesRes.json();
 
         // High-quality cinematic backgrounds for Hero Carousel
 
@@ -78,78 +77,87 @@ const HomePage = () => {
         ];
 
         const heroBanners = await heroBannersRes.json();
-        
+        const traysData = await traysRes.json();
+
+        // Exactly the movie ids the rest of this page needs — hardcoded
+        // "Continue Watching" ids plus every id referenced by an active tray
+        // — batch-fetched in one bounded request instead of pulling the
+        // entire catalog.
+        const continueIds = ['11', '16', '17', '18', '19'];
+        const trayShowIds = Array.isArray(traysData)
+          ? traysData.flatMap((t) => t.shows || [])
+          : [];
+        const neededIds = [...new Set([...continueIds, ...trayShowIds].map(String))];
+
+        const moviesRes = neededIds.length > 0
+          ? await moviesApi.getAll({ ids: neededIds })
+          : { data: [] };
+        const movies = moviesRes.data;
+        const moviesById = new Map(movies.map((m) => [String(m.id), m]));
+
         let finalHero = [];
         if (Array.isArray(heroBanners) && heroBanners.length > 0) {
-          finalHero = heroBanners
-            .filter(b => b.status === true)
-            .map(b => ({
-              id: b.show_id,
-              title: b.title,
-              backdropUrl: b.image,
-              posterUrl: b.image
-            }));
+          finalHero = heroBanners.map(b => ({
+            id: b.show_id,
+            title: b.title,
+            backdropUrl: b.image,
+            posterUrl: b.image
+          }));
         }
 
-        // Fallback if no specific hero banners are found or active
+        // Fallback if no active hero banners are configured — pull a small,
+        // bounded set of movies instead of filtering the whole catalog.
         if (finalHero.length === 0) {
-          const fallbackHeroMovies = movies.filter(m => m.category_id === 'hero').map((movie, index) => ({
-            ...movie,
-            backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
-          }));
-          
-          finalHero = fallbackHeroMovies.length > 0 ? fallbackHeroMovies : movies.slice(0, 5).map((movie, index) => ({
+          const heroRes = await moviesApi.getAll({ category_id: 'hero', limit: 5 });
+          const fallbackMovies = heroRes.data.length > 0
+            ? heroRes.data
+            : (await moviesApi.getAll({ limit: 5 })).data;
+
+          finalHero = fallbackMovies.map((movie, index) => ({
             ...movie,
             backdropUrl: cinematicBackgrounds[index % cinematicBackgrounds.length]
           }));
         }
 
-        // 3. Continue Watching (IDs 11, 16, 17, 18, 19)
+        // Continue Watching (IDs 11, 16, 17, 18, 19)
 
-        const continueIds = ['11', '16', '17', '18', '19'];
+        const continueWatching = continueIds
+          .map((id) => moviesById.get(id))
+          .filter((m) => m !== undefined)
+          .map(m => ({
 
-        const continueWatching = movies.filter(m => continueIds.includes(m.id)).map(m => ({
+            ...m,
 
-          ...m,
+            progress: m.id === '11' ? 80 : m.id === '16' ? 65 : m.id === '17' ? 50 : m.id === '18' ? 80 : 85,
 
-          progress: m.id === '11' ? 80 : m.id === '16' ? 65 : m.id === '17' ? 50 : m.id === '18' ? 80 : 85,
+            leftTime: m.id === '11' ? 'S1 E4 • 32m left' : m.id === '16' ? '1h 08m left' : m.id === '17' ? 'S2 E6 • 18m left' : m.id === '18' ? '42m left' : 'S1 E2 • 21m left'
 
-          leftTime: m.id === '11' ? 'S1 E4 • 32m left' : m.id === '16' ? '1h 08m left' : m.id === '17' ? 'S2 E6 • 18m left' : m.id === '18' ? '42m left' : 'S1 E2 • 21m left'
+          }));
 
-        }));
-
-        // Fallback for Continue Watching if empty
-
+        // Fallback for Continue Watching if none of the hardcoded ids exist
+        // — a small bounded fetch (not the full catalog) standing in for
+        // "some other movies", same as before.
         if (continueWatching.length === 0) {
-
-          movies.slice(5, 10).forEach((m, idx) => {
-
+          const fallbackRes = await moviesApi.getAll({ page: 2, limit: 5 });
+          fallbackRes.data.forEach((m, idx) => {
             continueWatching.push({
-
               ...m,
-
               progress: 30 + idx * 12,
-
               leftTime: `${15 + idx * 10}m left`
-
             });
-
           });
-
         }
 
         // Process Dynamic Trays from API
-        const traysData = await traysRes.json();
-        
+
         let dynamicTrays = [];
         if (Array.isArray(traysData) && traysData.length > 0) {
             dynamicTrays = traysData
-                .filter(t => t.status === true)
                 // sorting_position should already be sorted from backend, but ensuring it
                 .sort((a, b) => a.sorting_position - b.sorting_position)
                 .map(tray => {
                     const trayMovies = (tray.shows || [])
-                        .map(id => movies.find(m => String(m.id) === String(id)))
+                        .map(id => moviesById.get(String(id)))
                         .filter(m => m !== undefined);
                     return { ...tray, movies: trayMovies };
                 });

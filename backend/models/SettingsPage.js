@@ -14,7 +14,10 @@ const SettingsPage = sequelize.define('SettingsPage', {
     slug: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        // Fixed name so sync({ alter: true }) matches the existing DB index
+        // by name on every boot instead of adding a new duplicate one each
+        // time — see backend/models/User.js for the full explanation.
+        unique: 'settings_pages_slug_unique'
     },
     short_description: {
         type: DataTypes.TEXT,

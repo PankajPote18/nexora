@@ -10,7 +10,10 @@ const Payment = sequelize.define('Payment', {
     txnid: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        // Fixed name so sync({ alter: true }) matches the existing DB index
+        // by name on every boot instead of adding a new duplicate one each
+        // time — see backend/models/User.js for the full explanation.
+        unique: 'payments_txnid_unique'
     },
     plan_id: {
         type: DataTypes.BIGINT.UNSIGNED,

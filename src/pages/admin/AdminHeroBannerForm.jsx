@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
+import { moviesApi } from '../../services/api';
 
 const AdminHeroBannerForm = ({ banner, totalBanners, onClose }) => {
   // If it's a new banner, the sorting options should include the next available number.
@@ -22,9 +23,10 @@ const AdminHeroBannerForm = ({ banner, totalBanners, onClose }) => {
   useEffect(() => {
     const fetchMovies = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/movies`);
-        const data = await res.json();
-        setMovies(data);
+        // This picker needs every movie to choose from, not a paginated
+        // page — request a high limit against the now-paginated endpoint.
+        const response = await moviesApi.getAll({ limit: 500 });
+        setMovies(response.data);
       } catch (error) {
         console.error('Error fetching movies:', error);
       } finally {

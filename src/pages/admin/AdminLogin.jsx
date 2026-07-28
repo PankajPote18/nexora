@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Minimal admin login — calls the real, already-existing POST /api/auth/login
-// and stores a real JWT under 'adminAuthToken'. Not currently wired into any
-// upload flow (all uploads now go through the unauthenticated POST /api/upload,
-// see upload.routes.js) — kept as a standalone real-auth page; it does not
-// gate the rest of /admin/*, which remains as it was.
+// Minimal admin login — calls the real, already-existing POST /api/legacy-auth/login
+// (the consumer-facing login is a frontend-only demo now, see
+// src/hooks/useAuth.js — it doesn't call the backend at all, so /api/auth
+// isn't mounted here anymore either) and stores a real JWT under
+// 'adminAuthToken'. Not currently wired into any upload flow (all uploads now
+// go through the unauthenticated POST /api/upload, see upload.routes.js) —
+// kept as a standalone real-auth page; it does not gate the rest of
+// /admin/*, which remains as it was.
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,7 +21,7 @@ const AdminLogin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/legacy-auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

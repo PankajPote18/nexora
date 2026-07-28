@@ -1,8 +1,8 @@
 // TEMPORARY — read-only entrypoint used solely for local testing/measurement.
 // Deliberately skips sequelize.sync({ alter: true }) and seeding so it can
-// never write to or alter the configured (Railway) database — only serves
+// never write to or alter the configured (self-hosted VPS) database — only serves
 // existing data via the normal GET routes. Delete after use.
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const app = require('./app');
 const { sequelize } = require('./config/db.config');
 

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { settingsMenuApi } from '../services/api';
+import { useAuth, clearDemoSession } from '../hooks/useAuth';
+import { prefetchSettingsDetailPage } from '../utils/prefetch';
 
 // Map icon_key strings (stored in DB) back to Lucide components
 const ICON_MAP = {
@@ -28,9 +30,11 @@ const ICON_MAP = {
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const { phoneNumber } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     // Fetch only active menu items from backend
@@ -51,13 +55,11 @@ const SettingsPage = () => {
     }
   };
 
-  const handleConfirmLogout = () => {
-    localStorage.removeItem('user');
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    clearDemoSession();
     navigate('/login');
   };
-
-  const userStr = localStorage.getItem('user');
-  const user = userStr ? JSON.parse(userStr) : null;
 
   return (
     <div className="w-full bg-bg-dark flex flex-col justify-center min-h-[calc(100vh-80px)] pt-20 pb-8 md:pb-[20vh] lg:pb-8">
@@ -68,7 +70,7 @@ const SettingsPage = () => {
           {/* User Profile */}
           <div className="flex flex-col items-center mb-4 md:mb-6">
             <h1 className="text-lg md:text-2xl font-black text-white mb-1 tracking-wide text-center">
-              {user?.name || 'Jon deo'}
+              {phoneNumber || 'Account'}
             </h1>
           </div>
 
@@ -85,6 +87,9 @@ const SettingsPage = () => {
                   <button
                     key={item.id}
                     onClick={() => handleNavigation(item)}
+                    onMouseEnter={item.is_logout ? undefined : prefetchSettingsDetailPage}
+                    onFocus={item.is_logout ? undefined : prefetchSettingsDetailPage}
+                    onTouchStart={item.is_logout ? undefined : prefetchSettingsDetailPage}
                     className={`w-full flex items-center justify-between px-3.5 md:px-5 py-3 md:py-4 bg-bg-card hover:bg-white/5 border ${
                       item.is_highlight
                         ? 'border-[#00A8E1]/40 shadow-[0_0_12px_rgba(0,168,225,0.12)]'
@@ -137,14 +142,17 @@ const SettingsPage = () => {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 py-2.5 px-4 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 font-bold border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer text-sm"
+                disabled={loggingOut}
+                className="flex-1 py-2.5 px-4 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 font-bold border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer text-sm disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmLogout}
-                className="flex-1 py-2.5 px-4 rounded-full bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold transition-all duration-300 cursor-pointer text-sm shadow-lg shadow-[#00A8E1]/20"
+                disabled={loggingOut}
+                className="flex-1 py-2.5 px-4 rounded-full bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold transition-all duration-300 cursor-pointer text-sm shadow-lg shadow-[#00A8E1]/20 disabled:opacity-70 flex items-center justify-center gap-2"
               >
+                {loggingOut && <Loader2 size={14} className="animate-spin" />}
                 Logout
               </button>
             </div>

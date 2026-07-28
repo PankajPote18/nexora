@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import ProtectedRoute from './components/ProtectedRoute';
 import { PremiumModalProvider } from './context/PremiumModalContext';
 
 // Route-based code splitting: HomePage stays eager (it's the landing page,
@@ -49,7 +50,7 @@ function App() {
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Player Route - Standalone Fullscreen */}
-          <Route path="/player/:id" element={<PlayerPage />} />
+          <Route path="/player/:id" element={<ProtectedRoute><PlayerPage /></ProtectedRoute>} />
 
           {/* Auth Routes - Standalone Fullscreen */}
           <Route path="/login" element={<LoginPage />} />
@@ -81,26 +82,28 @@ function App() {
 
           {/* Public Routes with Navbar/Sidebar */}
           <Route path="*" element={
-            <div className="min-h-dvh bg-bg-dark flex flex-col md:pl-16 pb-16 md:pb-0 relative">
-              <Sidebar />
-              <Navbar />
-              <main className="flex-grow overflow-x-hidden w-full">
-                {/* Inner Suspense boundary: only the routed content pauses
-                    while its chunk loads — Navbar/Sidebar/Footer stay put
-                    instead of the whole shell flashing to a loading screen. */}
-                <Suspense fallback={<div className="min-h-[60vh]" />}>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/search" element={<SearchPage />} />
-                    <Route path="/movie/:id" element={<DetailPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/page/:slug" element={<SettingsDetailPage />} />
-                    <Route path="/plans" element={<PlansPage />} />
-                  </Routes>
-                </Suspense>
-              </main>
-              <Footer />
-            </div>
+            <ProtectedRoute>
+              <div className="min-h-dvh bg-bg-dark flex flex-col md:pl-16 pb-16 md:pb-0 relative">
+                <Sidebar />
+                <Navbar />
+                <main className="flex-grow overflow-x-hidden w-full">
+                  {/* Inner Suspense boundary: only the routed content pauses
+                      while its chunk loads — Navbar/Sidebar/Footer stay put
+                      instead of the whole shell flashing to a loading screen. */}
+                  <Suspense fallback={<div className="min-h-[60vh]" />}>
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/search" element={<SearchPage />} />
+                      <Route path="/movie/:id" element={<DetailPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/page/:slug" element={<SettingsDetailPage />} />
+                      <Route path="/plans" element={<PlansPage />} />
+                    </Routes>
+                  </Suspense>
+                </main>
+                <Footer />
+              </div>
+            </ProtectedRoute>
           } />
         </Routes>
         </Suspense>

@@ -2,7 +2,9 @@ const { Tray } = require('../models');
 
 exports.getAll = async (req, res) => {
     try {
+        const where = req.query.active === '1' ? { status: true } : {};
         const trays = await Tray.findAll({
+            where,
             order: [['sorting_position', 'ASC']]
         });
         res.json(trays);

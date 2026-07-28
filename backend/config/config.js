@@ -1,10 +1,10 @@
 // sequelize-cli config — mirrors the same connection logic as db.config.js
 // (DATABASE_URL takes precedence over discrete DB_* vars) so migrations run
 // against the exact same database the app itself connects to. This project
-// has only one real database (the Railway MySQL instance in backend/.env);
+// has only one real database (the self-hosted VPS MySQL instance in backend/.env);
 // there's no separate per-NODE_ENV database, so all three blocks resolve the
 // same way.
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const sslOptions = process.env.DB_SSL === 'true'
     ? { ssl: { require: true, rejectUnauthorized: false } }

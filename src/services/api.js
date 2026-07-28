@@ -63,9 +63,23 @@ export const plansApi = {
   toggle: (id) => patch(`/subscription-plans/${id}/toggle`),
 };
 
-// ── Movies (existing) ────────────────────────────────────────────────────────
+// ── Movies ───────────────────────────────────────────────────────────────────
+// getAll takes a params object ({ page, limit, category_id, ids, search }) so
+// every movie list fetch (Home, Search, Detail's fallback, Admin) goes
+// through one place instead of ad-hoc query strings. `ids` accepts an array
+// or a pre-joined string. Response shape: { data, total, page, limit, totalPages }.
+const buildMoviesQuery = (params = {}) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    searchParams.set(key, Array.isArray(value) ? value.join(',') : value);
+  });
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+};
+
 export const moviesApi = {
-  getAll: (params = '') => get(`/movies${params}`),
+  getAll: (params = {}) => get(`/movies${buildMoviesQuery(params)}`),
   getOne: (id) => get(`/movies/${id}`),
   create: (data) => post('/movies', data),
   update: (id, data) => put(`/movies/${id}`, data),

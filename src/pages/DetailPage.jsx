@@ -6,6 +6,7 @@ import MovieRow from '../components/MovieRow';
 import { DetailSkeleton } from '../components/Skeletons';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
 import { prefetchPlayerPage } from '../utils/prefetch';
+import { moviesApi } from '../services/api';
 
 const BACKDROP_WIDTHS = [800, 1200, 1920];
 
@@ -17,8 +18,14 @@ const DetailPage = () => {
   const { showModal } = usePremiumModal();
 
   const handleWatchClick = (e) => {
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
-    if (!user || !user.isSubscribed) {
+    // This page is only reachable while authenticated (see ProtectedRoute in
+    // App.jsx), but there's no real subscription check yet — the phone-
+    // number-keyed subscription module (see CLAUDE.md) is future work. Until
+    // that exists, fail closed: always require the "Explore Plans" modal
+    // rather than silently letting everyone through. Replace this
+    // unconditional `true` with the real subscription lookup once it exists.
+    const hasActiveSubscription = false;
+    if (!hasActiveSubscription) {
       e.preventDefault();
       showModal();
       return;
@@ -50,29 +57,19 @@ const DetailPage = () => {
     const fetchMovie = async () => {
       setLoading(true);
       try {
-        // Fire both requests in parallel instead of waiting on the movie
-        // fetch before conditionally kicking off the related-fallback one —
-        // we don't know upfront whether the movie response will include
-        // `related`, so the small chance of an unneeded second request is
-        // worth trading away the sequential round-trip.
-        const [response, allRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/movies/${id}`),
-          fetch(`${import.meta.env.VITE_API_URL}/api/movies`).catch(() => null),
-        ]);
-
-        if (!response.ok) {
-          throw new Error("Movie not found");
-        }
-        const data = await response.json();
+        // The backend now reliably returns `related` (same-category movies)
+        // alongside the detail record itself, so there's no need to also
+        // fetch the entire catalog on every detail-page view.
+        const data = await moviesApi.getOne(id);
 
         setMovie(data);
 
         if (data.related && data.related.length > 0) {
           setRelated(data.related);
-        } else if (allRes?.ok) {
-          const allMovies = await allRes.json();
-          const filtered = allMovies.filter(m => m.id.toString() !== id.toString());
-          setRelated(filtered.slice(0, 6));
+        } else {
+          // Narrow fallback only — a small bounded fetch, not the full list.
+          const fallback = await moviesApi.getAll({ limit: 6 });
+          setRelated(fallback.data.filter(m => m.id.toString() !== id.toString()));
         }
       } catch (error) {
         console.error("Error fetching movie details:", error);

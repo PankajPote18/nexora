@@ -3,35 +3,38 @@ import { Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
 import { prefetchDetailPage } from '../utils/prefetch';
+import { moviesApi } from '../services/api';
 
 const CARD_WIDTHS = [320, 480, 640];
 const CARD_SIZES = '(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 18vw';
+const SEARCH_DEBOUNCE_MS = 300;
 
 const SearchPage = () => {
   const [query, setQuery] = useState('');
   const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Using existing movie endpoint for now, fetching everything and filtering locally
+  // Debounced, backend-driven search — the query is filtered server-side
+  // (via ?search=) instead of fetching the entire catalog once and
+  // re-filtering it in memory on every keystroke.
   useEffect(() => {
-    const fetchMovies = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/movies`);
-        const data = await response.json();
-        setMovies(data);
-      } catch (error) {
-        console.error("Error fetching movies for search:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMovies();
-  }, []);
+    const timeoutId = setTimeout(() => {
+      const fetchMovies = async () => {
+        setLoading(true);
+        try {
+          const response = await moviesApi.getAll({ search: query || undefined, limit: 24 });
+          setMovies(response.data);
+        } catch (error) {
+          console.error("Error fetching movies for search:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchMovies();
+    }, SEARCH_DEBOUNCE_MS);
 
-  const filteredMovies = query 
-    ? movies.filter(m => m.title.toLowerCase().includes(query.toLowerCase()))
-    : movies.slice(0, 24); // Show some defaults initially
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   return (
     <div className="w-full bg-bg-dark pt-16 md:pt-24 px-4 md:px-12 pb-16 min-h-[calc(100vh-80px)]">
@@ -63,7 +66,7 @@ const SearchPage = () => {
             <div className="text-white">Loading...</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {filteredMovies.map((movie) => (
+              {movies.map((movie) => (
                 <Link
                   to={`/movie/${movie.id}`}
                   key={movie.id}
