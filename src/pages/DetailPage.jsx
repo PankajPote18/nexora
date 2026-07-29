@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Play, Plus } from 'lucide-react';
 import { usePremiumModal } from '../context/PremiumModalContext';
+import { useAuth } from '../hooks/useAuth';
 import MovieRow from '../components/MovieRow';
 import { DetailSkeleton } from '../components/Skeletons';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
@@ -16,15 +17,14 @@ const DetailPage = () => {
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const { showModal } = usePremiumModal();
+  const { isPremium } = useAuth();
 
   const handleWatchClick = (e) => {
     // This page is only reachable while authenticated (see ProtectedRoute in
-    // App.jsx), but there's no real subscription check yet — the phone-
-    // number-keyed subscription module (see CLAUDE.md) is future work. Until
-    // that exists, fail closed: always require the "Explore Plans" modal
-    // rather than silently letting everyone through. Replace this
-    // unconditional `true` with the real subscription lookup once it exists.
-    const hasActiveSubscription = false;
+    // App.jsx). There's still no real subscription check — this is just the
+    // 'premium' demo account (see DEMO_ACCOUNTS in useAuth.js) bypassing the
+    // paywall for demo purposes. Every other account stays fail-closed.
+    const hasActiveSubscription = isPremium;
     if (!hasActiveSubscription) {
       e.preventDefault();
       showModal();

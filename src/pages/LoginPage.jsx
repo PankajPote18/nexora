@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Loader2, ChevronDown } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, DEMO_ACCOUNTS } from '../hooks/useAuth';
 
 // Small curated list, not a full ISO 3166 dump — keeps the selector usable
 // on a phone screen. Defaults to +91 per product requirement.
@@ -13,10 +13,6 @@ const COUNTRY_CODES = [
   { code: '+65', label: 'SG +65' },
   { code: '+61', label: 'AU +61' },
 ];
-
-// Demo build: the only account is mobile 9999999999 / OTP 1234 (see
-// OtpPage.jsx) — no real backend auth.
-const DEMO_PHONE = '+919999999999';
 
 const isValidPhone = (countryCode, digits) => {
   if (countryCode === '+91') return /^[6-9]\d{9}$/.test(digits);
@@ -48,8 +44,9 @@ const LoginPage = () => {
     // Brief artificial delay to keep the existing "Sending OTP…" UX intact.
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    if (fullPhoneNumber !== DEMO_PHONE) {
-      setError('This is a demo build — sign in with 9999999999.');
+    const account = DEMO_ACCOUNTS.find((a) => a.phone === fullPhoneNumber);
+    if (!account) {
+      setError('This is a demo build — sign in with 9999999999, 8888888888, or 7777777777.');
       setLoading(false);
       return;
     }

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Loader2, CheckCircle2 } from 'lucide-react';
-import { useAuth, setDemoSession } from '../hooks/useAuth';
+import { useAuth, setDemoSession, DEMO_ACCOUNTS } from '../hooks/useAuth';
 
-const OTP_LENGTH = 4; // matches DEMO_OTP below
-const DEMO_OTP = '1234'; // demo build: only OTP that verifies, see LoginPage.jsx
+const OTP_LENGTH = 4; // matches every DEMO_ACCOUNTS otp (see useAuth.js)
 const RESEND_COOLDOWN_SEC = 30;
 
 const OtpPage = () => {
@@ -81,8 +80,9 @@ const OtpPage = () => {
     // Brief artificial delay to keep the existing "Verifying…" UX intact.
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    if (code !== DEMO_OTP) {
-      setError('Incorrect OTP. This is a demo build — use 1234.');
+    const account = DEMO_ACCOUNTS.find((a) => a.phone === phoneNumber);
+    if (!account || code !== account.otp) {
+      setError('Incorrect OTP for this demo account.');
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
       triggerShake();
@@ -93,7 +93,9 @@ const OtpPage = () => {
     setDemoSession(phoneNumber);
     setVerifying(false);
     setSuccess(true);
-    setTimeout(() => navigate('/'), 700);
+    // 'explore_plans' demo accounts land on /plans; every other account goes home.
+    const destination = account.type === 'explore_plans' ? '/plans' : '/';
+    setTimeout(() => navigate(destination), 700);
   };
 
   const handleResend = async () => {
