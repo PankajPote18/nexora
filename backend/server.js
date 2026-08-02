@@ -128,6 +128,44 @@ if (cluster.isPrimary) {
             await seedMasterData();
             console.log('Master data seeded.');
 
+            // Reminder pipeline (RabbitMQ + cron, see backend/jobs|queues|
+            // workers|services) — an isolated feature, started once here in
+            // the primary process only. Starting it per-worker would fire
+            // the cron N times and double-process queue jobs; the primary
+            // never serves HTTP, so running it here doesn't compete with API
+            // traffic either. Not awaited: RabbitMQ may be slow/unreachable
+            // at boot, and this must never delay workers from starting to
+            // serve requests. Failures here are logged and otherwise
+            // harmless to the rest of the app (see queues/rabbitmq.js's
+            // reconnect handling and the try/catch below).
+            try {
+                const reminderService = require('./services/reminder.service');
+                const { startReminderCron } = require('./jobs/reminder.cron');
+                const { startReminderWorker } = require('./workers/reminder.worker');
+
+                reminderService.createTestSubscription();
+                startReminderCron();
+                startReminderWorker().catch((err) => {
+                    console.error('[reminder] worker failed to start (non-fatal):', err.message);
+                });
+            } catch (err) {
+                console.error('[reminder] failed to start reminder pipeline (non-fatal):', err.message);
+            }
+
+            // Analytics nightly rollup (see CLAUDE.md §23) — same reasoning
+            // as the reminder cron above: must run exactly once, not once
+            // per worker, so it lives in the primary only. The per-request
+            // ingestion buffer itself (services/analytics/eventBuffer.service.js)
+            // is started per-worker instead, right below in the worker branch —
+            // each worker handles its own tracking requests and needs its own
+            // flush timer.
+            try {
+                const { startAnalyticsRollupCron } = require('./jobs/analyticsRollup.cron');
+                startAnalyticsRollupCron();
+            } catch (err) {
+                console.error('[analytics] failed to start rollup cron (non-fatal):', err.message);
+            }
+
             // The primary itself never serves HTTP traffic or holds a
             // request-serving connection pool open — close it so it isn't
             // sitting on idle connections for no reason once workers (each
@@ -187,6 +225,13 @@ if (cluster.isPrimary) {
     // Worker process: just serve HTTP. No sync/seed here — the primary
     // already did that before any worker was forked.
     const app = require('./app');
+
+    // Each worker gets its own in-memory analytics buffer/flush timer (see
+    // services/analytics/eventBuffer.service.js) — unlike cache.util.js's
+    // cache, nothing needs cross-worker coordination here, since every
+    // worker just eventually flushes its own received hits to the shared DB.
+    require('./services/analytics/eventBuffer.service').start();
+
     app.listen(PORT, () => {
         console.log(`Worker ${process.pid} listening on port ${PORT}`);
     });

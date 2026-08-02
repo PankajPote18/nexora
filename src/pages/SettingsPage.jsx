@@ -28,19 +28,42 @@ const ICON_MAP = {
   Bookmark,
 };
 
+const MENU_CACHE_KEY = 'clickbuz_settings_menu_cache';
+
+// Same instant-paint-then-revalidate pattern HomePage uses (see its
+// readCachedData) — read synchronously in the initializer so a repeat visit
+// paints the menu immediately instead of guaranteeing one blocking spinner
+// frame while the network round trip completes.
+const readCachedMenu = () => {
+  try {
+    const cached = localStorage.getItem(MENU_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+};
+
 const SettingsPage = () => {
   const navigate = useNavigate();
   const { phoneNumber } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [menuItems, setMenuItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [menuItems, setMenuItems] = useState(() => readCachedMenu() ?? []);
+  const [loading, setLoading] = useState(() => readCachedMenu() === null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    // Fetch only active menu items from backend
+    // Cache (if any) is already painted from the useState initializers above
+    // — this always revalidates in the background regardless.
     settingsMenuApi
       .getAll(true)
-      .then((data) => setMenuItems(data))
+      .then((data) => {
+        setMenuItems(data);
+        try {
+          localStorage.setItem(MENU_CACHE_KEY, JSON.stringify(data));
+        } catch {
+          // storage full/disabled — non-fatal, just skip caching
+        }
+      })
       .catch((err) => console.error('Settings menu fetch failed:', err))
       .finally(() => setLoading(false));
   }, []);

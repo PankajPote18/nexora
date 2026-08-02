@@ -9,34 +9,8 @@
          fires, so DNS/TLS negotiation isn't on the critical path. -->
     <link rel="preconnect" href="%VITE_API_URL%" crossorigin />
     <link rel="dns-prefetch" href="%VITE_API_URL%" />
-    <!-- Meta Pixel Code — deferred to run after the page has finished
-         loading instead of blocking/competing with critical-path resources
-         on every navigation. Tracking behavior (init + PageView) is
-         unchanged, only its execution timing moves. -->
-    <script>
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    function loadMetaPixel() {
-      fbq('init', '1434921688318163');
-      fbq('track', 'PageView');
-    }
-    if (document.readyState === 'complete') {
-      loadMetaPixel();
-    } else {
-      window.addEventListener('load', loadMetaPixel);
-    }
-    </script>
   </head>
   <body>
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=1434921688318163&ev=PageView&noscript=1"
-    /></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

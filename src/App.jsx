@@ -6,6 +6,8 @@ import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from './components/ProtectedRoute';
 import { PremiumModalProvider } from './context/PremiumModalContext';
+import AnalyticsBoundary from './analytics/AnalyticsBoundary';
+import MetaPixelBoundary from './analytics/MetaPixelBoundary';
 
 // Route-based code splitting: HomePage stays eager (it's the landing page,
 // no benefit to lazy-loading the page a first-time visitor lands on
@@ -36,6 +38,13 @@ const AdminAgeCertificates = lazy(() => import('./pages/admin/AdminAgeCertificat
 const AdminMatureThemes = lazy(() => import('./pages/admin/AdminMatureThemes'));
 const AdminBadges = lazy(() => import('./pages/admin/AdminBadges'));
 
+// Website Analytics System (see CLAUDE.md §23) — a completely separate
+// module/route tree from /admin, split into its own chunk the same way.
+const AnalyticsLayout = lazy(() => import('./pages/analytics-dashboard/AnalyticsLayout'));
+const AnalyticsOverview = lazy(() => import('./pages/analytics-dashboard/AnalyticsOverview'));
+const AnalyticsVisitors = lazy(() => import('./pages/analytics-dashboard/AnalyticsVisitors'));
+const AnalyticsVisitorDetail = lazy(() => import('./pages/analytics-dashboard/AnalyticsVisitorDetail'));
+
 const RouteFallback = () => (
   <div className="min-h-dvh flex items-center justify-center bg-bg-dark text-white text-sm">
     Loading…
@@ -46,9 +55,18 @@ function App() {
   return (
     <Router>
       <ScrollToTop />
+      <AnalyticsBoundary />
+      <MetaPixelBoundary />
       <PremiumModalProvider>
         <Suspense fallback={<RouteFallback />}>
         <Routes>
+          {/* Analytics Dashboard - Standalone, isolated from /admin (see CLAUDE.md §23) */}
+          <Route path="/analytics" element={<AnalyticsLayout />}>
+            <Route index element={<AnalyticsOverview />} />
+            <Route path="visitors" element={<AnalyticsVisitors />} />
+            <Route path="visitors/:visitorId" element={<AnalyticsVisitorDetail />} />
+          </Route>
+
           {/* Player Route - Standalone Fullscreen */}
           <Route path="/player/:id" element={<ProtectedRoute><PlayerPage /></ProtectedRoute>} />
 

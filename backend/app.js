@@ -70,6 +70,13 @@ app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
 app.use('/api/trays', require('./routes/tray.routes'));
 app.use('/api/payments', require('./routes/payment.routes'));
 
+// Website Analytics System (see CLAUDE.md §23) — deliberately isolated from
+// /api/admin: its own model files (models/analytics/), controllers
+// (controllers/analytics/), and this one route mount. No auth middleware
+// here, consistent with most other routes in this codebase (see CLAUDE.md
+// §6/§17) — flagged, not assumed acceptable; add gating later if desired.
+app.use('/api/analytics', require('./routes/analytics.routes'));
+
 // Global Error Handler — every controller already wraps its own try/catch
 // and responds directly (see CLAUDE.md §13), so this is a backstop for
 // anything that reaches here uncaught (e.g. a rejected promise Express 5

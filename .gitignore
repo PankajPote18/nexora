@@ -56,3 +56,7 @@ playwright.config.js
 # streams everything to Bunny Storage and never writes to local disk, so
 # nothing under here is referenced by any code path anymore.
 backend/uploads/
+
+# MaxMind GeoLite2 database — proprietary/licensed data (redistribution is
+# against MaxMind's license), downloaded locally via backend/scripts/downloadGeoDb.js
+backend/data/*.mmdb

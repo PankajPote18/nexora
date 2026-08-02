@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { plansApi, paymentsApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { trackCompleteRegistration } from '../analytics/metaEvents';
 
 // Polling cadence/timeout for checking payment status after the user is sent
 // to their UPI app — a browser redirect back isn't reliable for intent-based
@@ -18,11 +19,9 @@ const PlansPage = () => {
   const [loading, setLoading] = useState(true);
 
   // Payment flow state
-  const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | need_details | creating | awaiting_upi | success | failed | cancelled | timeout | error
+  const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | awaiting_upi | success | failed | cancelled | timeout | error
   const [txnid, setTxnid] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
   useEffect(() => {
@@ -90,6 +89,22 @@ const PlansPage = () => {
     return () => clearInterval(interval);
   }, [paymentPhase, txnid]);
 
+  // Fires exactly once per successful payment, regardless of which of the
+  // two call sites above (the poller, or handleCheckStatusNow below) is the
+  // one that actually flips paymentPhase to 'success'. Resets when the flow
+  // is reset back to 'idle' so a later retried/second payment can track again.
+  const registrationTracked = useRef(false);
+  useEffect(() => {
+    if (paymentPhase === 'success' && !registrationTracked.current) {
+      registrationTracked.current = true;
+      const plan = plans.find((p) => p.id === selectedPlan);
+      trackCompleteRegistration({ status: true, value: plan?.discounted_price, currency: 'INR' });
+    }
+    if (paymentPhase === 'idle') {
+      registrationTracked.current = false;
+    }
+  }, [paymentPhase, plans, selectedPlan]);
+
   // Compute discount percentage for display
   const discountPercent = (plan) => {
     if (!plan.original_price || plan.original_price === 0) return '0 %';
@@ -100,18 +115,16 @@ const PlansPage = () => {
   const handlePayNow = async () => {
     if (!selectedPlan) return;
 
-    if (!customerName.trim() || !customerEmail.trim() || !customerPhone.trim()) {
-      setPaymentPhase('need_details');
-      return;
-    }
-
     setErrorMsg('');
     setPaymentPhase('creating');
     try {
+      // No contact-detail form anymore — PayU still requires a name/email
+      // per transaction, so a demo placeholder is derived from the session
+      // phone number instead of asking the user to type them in.
       const res = await paymentsApi.create({
         plan_id: selectedPlan,
-        customer_name: customerName.trim(),
-        customer_email: customerEmail.trim(),
+        customer_name: 'ClickBuz User',
+        customer_email: `user${customerPhone}@clickbuz-demo.local`,
         customer_phone: customerPhone.trim(),
       });
       setTxnid(res.txnid);
@@ -264,37 +277,6 @@ const PlansPage = () => {
               </div>
             )}
 
-            {/* Inline contact details — only shown if we don't already have them */}
-            {paymentPhase === 'need_details' && (
-              <div className="space-y-3 mb-4">
-                <input
-                  type="text"
-                  placeholder="Full name"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  data-testid="contact-name-input"
-                  className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
-                />
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  data-testid="contact-email-input"
-                  className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
-                />
-                <input
-                  type="tel"
-                  placeholder="Mobile number"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
-                  maxLength="10"
-                  data-testid="contact-phone-input"
-                  className="w-full bg-[#252833] border border-gray-600 rounded-xl px-4 py-3 text-white outline-none placeholder-gray-500 focus:border-[#00A8E1] transition-colors"
-                />
-              </div>
-            )}
-
             {errorMsg && (
               <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
             )}
@@ -334,7 +316,7 @@ const PlansPage = () => {
                 className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >
                 {paymentPhase === 'creating' && <Loader2 className="animate-spin" size={20} />}
-                {paymentPhase === 'creating' ? 'Starting payment…' : paymentPhase === 'need_details' ? 'Continue to Pay' : 'Pay Now'}
+                {paymentPhase === 'creating' ? 'Starting payment…' : 'Pay Now'}
               </button>
             )}
           </>

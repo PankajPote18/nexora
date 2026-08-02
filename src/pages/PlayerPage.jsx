@@ -18,6 +18,26 @@ const computeIsPortrait = () => {
   return isMobile && window.innerHeight > window.innerWidth;
 };
 
+// iPadOS 13+ reports as "Macintosh" in the UA string but is still a touch
+// device with no mouse — the maxTouchPoints check catches that case too.
+const isIOS = () =>
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+// Real touch hardware only — deliberately NOT the same "narrow viewport"
+// heuristic used elsewhere (computeIsPortrait's isMobile check). That looser
+// check treats any window under 1024px as "mobile", which also matches a
+// mouse-only laptop with its browser window simply narrowed — a device that
+// has a fixed, non-rotating screen. Attempting fullscreen + orientation
+// lock there always throws NotSupportedError (no orientation hardware to
+// lock), which was showing up as a scary console error for exactly that
+// case. Only genuine touch devices get the fullscreen/landscape treatment;
+// desktop/laptop playback (per the original intent) stays untouched.
+const isTouchDevice = () =>
+  typeof window !== 'undefined' &&
+  (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+
 const PlayerPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -93,16 +113,30 @@ const PlayerPage = () => {
 
   // Enters fullscreen and (where supported) locks landscape orientation.
   // Falls back gracefully across browsers:
+  // - iOS Safari first, specifically: screen.orientation.lock() exists
+  //   there as a stub but always rejects with NotSupportedError (Apple
+  //   never implemented it — web content can't force orientation), and
+  //   Safari's generic Element.requestFullscreen() on our custom UI
+  //   container doesn't auto-rotate the way native video fullscreen does.
+  //   The video element's own webkitEnterFullscreen() is the only path
+  //   that reliably lands in landscape on iOS — its native fullscreen
+  //   video player rotates to match the video's own orientation on its
+  //   own, with no orientation-lock call needed or possible. Modern iOS
+  //   Safari *does* define Element.requestFullscreen now, so without this
+  //   explicit check first, the generic path below would be taken instead
+  //   and silently stay portrait.
   // - Standard Fullscreen API (Chrome/Firefox/Edge, desktop and Android).
   // - Vendor-prefixed webkitRequestFullscreen (older WebKit).
-  // - iOS Safari doesn't support the Fullscreen API on arbitrary elements —
-  //   only <video> itself supports native fullscreen there — so as a last
-  //   resort we use the video element's own webkitEnterFullscreen(). iOS also
-  //   has no Screen Orientation lock API at all, so orientation lock is
-  //   skipped entirely in that case rather than throwing.
+  // - Any other browser without a video-level fullscreen fallback either:
+  //   no-op, playback just continues un-rotated.
   const enterFullscreenLandscape = async () => {
     const container = containerRef.current;
     const video = videoRef.current;
+
+    if (isIOS() && video?.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen();
+      return;
+    }
 
     try {
       if (container?.requestFullscreen) {
@@ -123,27 +157,43 @@ const PlayerPage = () => {
     if (screen.orientation?.lock) {
       try {
         await screen.orientation.lock("landscape");
-      } catch (err) {
-        console.log("Orientation lock failed or not supported:", err);
+      } catch {
+        // Expected on a lot of real hardware even now that we're in
+        // fullscreen on a genuine touch device (isTouchDevice() already
+        // filtered out mouse-only laptops before this ever runs) — some
+        // Android WebViews/browsers simply don't implement this API. The
+        // CSS-based rotation below (isPortrait/portraitStyles) is what
+        // actually guarantees the visual landscape layout on a portrait
+        // phone; this call is a bonus that also locks against the OS
+        // rotating it back, when the platform supports it. Not logged as an
+        // error — it's a known, unactionable platform gap, not a bug.
       }
     }
   };
 
   const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-        // Auto fullscreen + landscape on mobile only — desktop/laptop
-        // playback is untouched.
-        const isMobile = window.innerWidth < 1024 || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-        if (isMobile && !document.fullscreenElement) {
-          enterFullscreenLandscape();
-        }
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      // Fullscreen/orientation-lock must be requested synchronously inside
+      // this click/tap handler, not deferred to the video's `play` event —
+      // browsers only honor those APIs while "user activation" from the
+      // gesture that triggered this handler is still active, and that
+      // activation window is gone by the time an async DOM event like
+      // `play` fires later. enterFullscreenLandscape() is an async function,
+      // but calling it (without awaiting) still issues its first
+      // requestFullscreen()/webkitEnterFullscreen() call synchronously here,
+      // which is what actually matters.
+      if (isTouchDevice() && !document.fullscreenElement) {
+        enterFullscreenLandscape();
       }
-      setIsPlaying(!isPlaying);
+      videoRef.current.play();
     }
+    // isPlaying itself is updated by the video's onPlay/onPause handlers
+    // below, not here — play() is async (it returns a Promise, and can be
+    // rejected/blocked), so the DOM event is the only reliable signal that
+    // playback actually started.
   };
 
   const handleTimeUpdate = () => {
@@ -188,35 +238,27 @@ const PlayerPage = () => {
         } catch (err) {
           console.log(err);
         }
-      } else {
-        try {
-          if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock("landscape").catch(err => console.log("Orientation lock failed:", err));
-          }
-        } catch (err) {
-          console.log(err);
-        }
       }
+      // No lock() call here on the isFull branch — that already happens
+      // once, directly inside enterFullscreenLandscape right after
+      // fullscreen is granted. Calling it again here (on the fullscreenchange
+      // event that same requestFullscreen() call itself fires) raced a
+      // second, overlapping lock() request against the first and aborted it
+      // (AbortError: "canceled this call").
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Attempt to lock screen orientation to landscape on mobile
+  // Exit fullscreen / unlock orientation on unmount (leaving the player).
+  // There used to also be an immediate screen.orientation.lock("landscape")
+  // call here on mount — that can never succeed (the document isn't in
+  // fullscreen yet at mount time, which orientation lock requires almost
+  // everywhere) and only produced a guaranteed console error on every page
+  // load. The real lock happens in enterFullscreenLandscape, once fullscreen
+  // has actually been granted, triggered by the video's play event.
   useEffect(() => {
-    const lockOrientation = async () => {
-      try {
-        if (screen.orientation && screen.orientation.lock) {
-          await screen.orientation.lock("landscape");
-        }
-      } catch (err) {
-        console.log("Orientation lock failed or not supported on load:", err);
-      }
-    };
-    lockOrientation();
-
     return () => {
-      // Exit fullscreen if still active
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(err => console.log(err));
       }
@@ -292,8 +334,15 @@ const PlayerPage = () => {
         </div>
       )}
 
-      {/* Top Bar — always visible (loading, empty, and playing states) */}
-      <div className="absolute top-0 inset-x-0 z-10 flex items-center justify-between p-6">
+      {/* Top Bar — always visible (loading, empty, and playing states). z-20
+          so it stays above the Playback Controls Overlay below: that
+          overlay's "Center Controls" div stretches via flex-1 to fill the
+          space between the top bar and the bottom bar (it's the only
+          flex-growing child of a justify-between column), which put an
+          invisible click-catching area directly over the close/settings
+          buttons whenever both shared the same z-10 — the later one in DOM
+          order (the overlay) was winning the tie and swallowing the click. */}
+      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-6">
         <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-black/80 to-transparent pointer-events-none -z-10"></div>
         <div className="flex items-center space-x-6">
           <button onClick={() => navigate(`/movie/${id}`)} className="text-white hover:text-gray-300 transition p-2">

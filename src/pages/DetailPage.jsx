@@ -8,6 +8,7 @@ import { DetailSkeleton } from '../components/Skeletons';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
 import { prefetchPlayerPage } from '../utils/prefetch';
 import { moviesApi } from '../services/api';
+import { trackViewContent } from '../analytics/metaEvents';
 
 const BACKDROP_WIDTHS = [800, 1200, 1920];
 
@@ -80,6 +81,16 @@ const DetailPage = () => {
 
     fetchMovie();
   }, [id]);
+
+  useEffect(() => {
+    if (!movie) return;
+    trackViewContent({
+      contentName: movie.title,
+      contentCategory: movie.genres?.[0],
+      contentIds: [String(movie.id)],
+      contentType: 'product',
+    });
+  }, [movie]);
 
   if (loading) return <DetailSkeleton />;
   if (!movie) return <div className="min-h-screen bg-[#02040a] text-white flex items-center justify-center text-xl">Movie not found</div>;

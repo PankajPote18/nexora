@@ -4,15 +4,30 @@ import { Link } from 'react-router-dom';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
 import { prefetchDetailPage } from '../utils/prefetch';
 import { moviesApi } from '../services/api';
+import { trackSearch } from '../analytics/metaEvents';
 
 const CARD_WIDTHS = [320, 480, 640];
 const CARD_SIZES = '(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 18vw';
 const SEARCH_DEBOUNCE_MS = 300;
+const RECOMMENDED_CACHE_KEY = 'clickbuz_search_recommended_cache';
+
+// Same instant-paint-then-revalidate pattern HomePage uses — only applies to
+// the empty-query "Recommended" grid (what's shown before the user types
+// anything), since actual search results are query-specific and shouldn't
+// persist across different searches.
+const readCachedRecommended = () => {
+  try {
+    const cached = localStorage.getItem(RECOMMENDED_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+};
 
 const SearchPage = () => {
   const [query, setQuery] = useState('');
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [movies, setMovies] = useState(() => readCachedRecommended() ?? []);
+  const [loading, setLoading] = useState(() => readCachedRecommended() === null);
 
   // Debounced, backend-driven search — the query is filtered server-side
   // (via ?search=) instead of fetching the entire catalog once and
@@ -20,10 +35,25 @@ const SearchPage = () => {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       const fetchMovies = async () => {
-        setLoading(true);
+        const isRecommended = query.trim() === '';
+        const hasCachedRecommended = isRecommended && readCachedRecommended() !== null;
+        // Skip the blocking spinner when we already have a cached
+        // "Recommended" grid painted — this fetch just revalidates it in
+        // the background. An actual search (or a first-ever visit with no
+        // cache yet) still shows the spinner as before.
+        if (!hasCachedRecommended) setLoading(true);
         try {
           const response = await moviesApi.getAll({ search: query || undefined, limit: 24 });
           setMovies(response.data);
+          if (isRecommended) {
+            try {
+              localStorage.setItem(RECOMMENDED_CACHE_KEY, JSON.stringify(response.data));
+            } catch {
+              // storage full/disabled — non-fatal, just skip caching
+            }
+          } else {
+            trackSearch({ searchString: query.trim(), contentCategory: 'movie' });
+          }
         } catch (error) {
           console.error("Error fetching movies for search:", error);
         } finally {
