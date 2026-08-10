@@ -37,7 +37,11 @@ export function trackPageView(url, title, options = {}) {
 }
 
 export function trackEvent(eventName, params = {}, options = {}) {
-    const context = buildDispatchContext();
+    // An explicit eventId (e.g. from PlansPage.jsx's checkout flow) lets this
+    // Pixel event dedupe against a server-side Conversions API mirror that
+    // was generated earlier and already shared with the backend — see
+    // backend/controllers/payment.controller.js's createPayment/metaEventId.
+    const context = buildDispatchContext(options.eventId ? { eventId: options.eventId } : {});
     resolveTargets(options).forEach((provider) => {
         try {
             provider.event?.(eventName, params, context);

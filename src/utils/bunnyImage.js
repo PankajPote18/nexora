@@ -30,6 +30,13 @@ export const bunnyImageUrl = (url, width) => {
     const u = new URL(url);
     u.searchParams.set('width', String(width));
     u.searchParams.set('quality', '100');
+    // Explicit format=webp (not relying on Optimizer's Accept-header
+    // auto-negotiation) so every browser Lighthouse/real users hit gets the
+    // smaller next-gen encoding deterministically — see Bunny's docs
+    // (bunny.net/docs/stream-image-processing): "format=webp" is the
+    // documented, explicit way to request it. AVIF isn't confirmed
+    // supported by Optimizer as of this writing, so not requested here.
+    u.searchParams.set('format', 'webp');
     return u.toString();
   } catch {
     return url;

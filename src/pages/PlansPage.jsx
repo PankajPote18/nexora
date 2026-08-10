@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide
 import { plansApi, paymentsApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
+import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
 
 // Polling cadence/timeout for checking payment status after the user is sent
 // to their UPI app — a browser redirect back isn't reliable for intent-based
@@ -21,8 +22,13 @@ const PlansPage = () => {
   // Payment flow state
   const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | awaiting_upi | success | failed | cancelled | timeout | error
   const [txnid, setTxnid] = useState(null);
+  // Shared with the client-side Pixel's CompleteRegistration call so Meta
+  // can dedupe it against the server-side Conversions API mirror sent from
+  // the backend once this payment succeeds — see metaCapi.util.js.
+  const [metaEventId, setMetaEventId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [enableAutopay, setEnableAutopay] = useState(false);
 
   useEffect(() => {
     // Fetch only active plans from backend
@@ -72,6 +78,11 @@ const PlansPage = () => {
       pollCount += 1;
       try {
         const res = await paymentsApi.getStatus(txnid);
+        // Recovers the id when this tab resumed via ?txnid= (a fresh page
+        // load after PayU's redirect never calls createPayment, so state
+        // never had it) — captured on every poll tick, not just the final
+        // one, so it's available by the time paymentPhase flips to 'success'.
+        if (res.metaEventId) setMetaEventId(res.metaEventId);
         if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
           clearInterval(interval);
           setPaymentPhase(res.status);
@@ -98,12 +109,12 @@ const PlansPage = () => {
     if (paymentPhase === 'success' && !registrationTracked.current) {
       registrationTracked.current = true;
       const plan = plans.find((p) => p.id === selectedPlan);
-      trackCompleteRegistration({ status: true, value: plan?.discounted_price, currency: 'INR' });
+      trackCompleteRegistration({ status: true, value: plan?.discounted_price, currency: 'INR', eventId: metaEventId });
     }
     if (paymentPhase === 'idle') {
       registrationTracked.current = false;
     }
-  }, [paymentPhase, plans, selectedPlan]);
+  }, [paymentPhase, plans, selectedPlan, metaEventId]);
 
   // Compute discount percentage for display
   const discountPercent = (plan) => {
@@ -126,8 +137,12 @@ const PlansPage = () => {
         customer_name: 'ClickBuz User',
         customer_email: `user${customerPhone}@clickbuz-demo.local`,
         customer_phone: customerPhone.trim(),
+        fbc: getStoredFbc(),
+        fbp: getFbpCookie(),
+        enable_autopay: enableAutopay,
       });
       setTxnid(res.txnid);
+      setMetaEventId(res.metaEventId || null);
       setPaymentPhase('awaiting_upi');
       // Hands off to whichever UPI app is installed; this is a custom URI
       // scheme so the page itself keeps running (polling continues below).
@@ -143,6 +158,7 @@ const PlansPage = () => {
     if (!txnid) return;
     try {
       const res = await paymentsApi.getStatus(txnid);
+      if (res.metaEventId) setMetaEventId(res.metaEventId);
       if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
         setPaymentPhase(res.status);
       }
@@ -154,6 +170,7 @@ const PlansPage = () => {
   const resetPaymentFlow = () => {
     setPaymentPhase('idle');
     setTxnid(null);
+    setMetaEventId(null);
     setErrorMsg('');
   };
 
@@ -181,7 +198,7 @@ const PlansPage = () => {
                 <div className="relative" key={plan.id}>
                   {/* Recommended Badge */}
                   {plan.is_recommended && (
-                    <div className="absolute -top-3 left-6 bg-[#1a1d24] border border-gray-700 text-[#00A8E1] text-[10px] font-bold px-3 py-1 rounded-full z-10">
+                    <div className="absolute -top-3 left-6 bg-[#1a1d24] border border-gray-700 text-[#00A8E1] text-xs font-bold px-3 py-1 rounded-full z-10">
                       Recommended
                     </div>
                   )}
@@ -225,7 +242,7 @@ const PlansPage = () => {
                       <span className="font-bold text-base md:text-lg leading-tight">
                         {discountPercent(plan)}
                       </span>
-                      <span className="text-[10px] uppercase font-semibold">Off</span>
+                      <span className="text-xs uppercase font-semibold">Off</span>
                     </div>
                   </div>
                 </div>
@@ -279,6 +296,25 @@ const PlansPage = () => {
 
             {errorMsg && (
               <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
+            )}
+
+            {/* Autopay opt-in — only shown before a payment attempt starts */}
+            {(paymentPhase === 'idle' || paymentPhase === 'error') && (
+              <label className="flex items-start gap-3 mb-6 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableAutopay}
+                  onChange={(e) => setEnableAutopay(e.target.checked)}
+                  data-testid="enable-autopay-checkbox"
+                  className="mt-0.5 w-4 h-4 accent-[#00A8E1] cursor-pointer"
+                />
+                <span className="text-sm">
+                  <span className="text-white font-semibold">Enable auto-renewal (UPI Autopay)</span>
+                  <span className="block text-gray-400 text-xs mt-0.5">
+                    Your plan will renew automatically via UPI Autopay when it expires — no need to pay manually each cycle. You can cancel anytime.
+                  </span>
+                </span>
+              </label>
             )}
 
             {/* Pay Now / status button */}

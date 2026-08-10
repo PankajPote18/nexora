@@ -183,12 +183,14 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
         <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-30 flex items-center space-x-3">
           <button
             ref={(node) => setPrevEl(node)}
+            aria-label="Previous slide"
             className="w-10 h-10 rounded-full bg-black/40 border border-white/10 hover:bg-[#00A8E1] hover:border-[#00A8E1] flex items-center justify-center text-white transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
           >
             <ChevronLeft size={20} />
           </button>
           <button
             ref={(node) => setNextEl(node)}
+            aria-label="Next slide"
             className="w-10 h-10 rounded-full bg-black/40 border border-white/10 hover:bg-[#00A8E1] hover:border-[#00A8E1] flex items-center justify-center text-white transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
           >
             <ChevronRight size={20} />

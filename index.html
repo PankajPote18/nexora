@@ -4,7 +4,27 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ClickBuz is a streaming platform for movies and web series — watch trending titles, continue where you left off, and explore subscription plans." />
     <title>ClickBuz Platform</title>
+    <!-- Baseline CSP via meta tag — deliberately hosting-agnostic, since this
+         repo has no committed deploy config (no vercel.json/netlify.toml/
+         render.yaml) and the actual frontend host is unclear (see
+         CLAUDE.md §2/§15). Covers every real origin this app loads from:
+         self, Bunny CDN images, Meta Pixel + GA4/GTM (analytics, §23/§24),
+         this build's own backend API (VITE_API_URL, replaced at build time
+         the same way the preconnect tag below already does), and the
+         Unsplash/Picsum fallback images used in onError handlers (§12).
+         style-src needs 'unsafe-inline' because Swiper (carousels) and
+         several components' inline style={{...}} attributes rely on it —
+         removing it would break carousel positioning, not a security fix
+         worth that cost here. NOTE: `frame-ancestors` (clickjacking
+         protection) and `X-Frame-Options` are NOT enforceable via a <meta>
+         tag per spec — browsers silently ignore them here. Real
+         clickjacking protection needs a header set by whatever actually
+         hosts this build (a vercel.json/_headers file/Express middleware,
+         depending on the host chosen) — flag this to the user rather than
+         guessing at a host that may not match reality. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://clickbuz-media.b-cdn.net https://www.facebook.com https://images.unsplash.com https://picsum.photos; font-src 'self' data:; connect-src 'self' %VITE_API_URL% https://www.facebook.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self';" />
     <!-- Warm up the connection to the API host before the app's first fetch
          fires, so DNS/TLS negotiation isn't on the critical path. -->
     <link rel="preconnect" href="%VITE_API_URL%" crossorigin />

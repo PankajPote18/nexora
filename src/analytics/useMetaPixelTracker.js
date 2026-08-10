@@ -4,6 +4,8 @@ import { initializeMetaPixel } from './metaPixel';
 import { trackPageView } from './metaEvents';
 import { installAutoLinkTracking } from './autoLinkTracking';
 import { hasMarketingConsent, CONSENT_CHANGED_EVENT } from './metaConsent';
+import { captureFbclid } from './metaClickIds';
+import { deferToIdle } from './deferToIdle';
 
 // Same excluded paths as useAnalyticsTracker.js's GA/custom tracker, but
 // kept as its own local constant rather than importing the other module's —
@@ -17,8 +19,13 @@ function isExcluded(pathname) {
 
 function startMetaTracking() {
     if (!hasMarketingConsent()) return;
-    initializeMetaPixel();
+    // installAutoLinkTracking/captureFbclid are just listener setup + a URL
+    // param read — cheap, stay immediate. initializeMetaPixel() is the one
+    // that injects and executes fbevents.js (a real third-party script), so
+    // it's the part deferred off the critical path (see deferToIdle.js).
     installAutoLinkTracking();
+    captureFbclid();
+    deferToIdle(initializeMetaPixel);
 }
 
 // Mounted once at the app root (see App.jsx's <MetaPixelBoundary />).

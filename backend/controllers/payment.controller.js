@@ -1,24 +1,31 @@
-const { Payment, SubscriptionPlan } = require('../models');
-const { sequelize } = require('../config/db.config');
+const crypto = require('crypto');
+const { Payment, Subscription, SubscriptionPlan } = require('../models');
 const {
     generateTxnId,
     buildRequestHash,
+    buildSiDetails,
     verifyResponseHash,
-    initiateUpiIntentPayment,
-    verifyPaymentWithPayu,
-    mapPayuStatus
+    initiateUpiIntentPayment
 } = require('../utils/payu.util');
-
-const FINAL_STATUSES = ['success', 'failed', 'cancelled'];
-const VERIFY_THROTTLE_MS = 5000;
+const { getClientIp } = require('../utils/analytics/ipHash.util');
+const { FINAL_STATUSES, VERIFY_THROTTLE_MS, reconcileWithPayu } = require('../services/payuReconcile.service');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
 
+// A UPI Autopay mandate needs its own validity window (how long the mandate
+// itself can be charged against), separate from the Subscription's own
+// expires_at (which drives *when* the next charge is due). A long window
+// avoids re-registering the mandate every billing cycle — this app's own
+// autopay billing cron (services/autopayBilling.service.js) is what actually
+// decides when to charge within that window.
+const MANDATE_VALIDITY_YEARS = 3;
+const toPayuDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
+
 // Creates a Payment record and initiates a PayU UPI Intent S2S transaction.
 exports.createPayment = async (req, res) => {
     try {
-        const { plan_id, customer_name, customer_email, customer_phone } = req.body;
+        const { plan_id, customer_name, customer_email, customer_phone, fbc, fbp, enable_autopay } = req.body;
 
         if (!plan_id || !customer_name || !customer_email || !customer_phone) {
             return res.status(400).json({ message: 'plan_id, customer_name, customer_email and customer_phone are required' });
@@ -47,6 +54,14 @@ exports.createPayment = async (req, res) => {
         const productinfo = `ClickBuz ${plan.name} Subscription`;
         const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
 
+        // Shared with the client-side Meta Pixel's CompleteRegistration call
+        // (once payment succeeds) so Meta can dedupe the two events — see
+        // trackCompleteRegistration in src/analytics/metaEvents.js. Generated
+        // now because this is the only point with real browser context
+        // (fbc/fbp/ip/ua); reconcileWithPayu (where 'success' is written)
+        // can be reached from PayU's S2S webhook, which has none of that.
+        const metaEventId = crypto.randomUUID();
+
         // Create the pending record first so we have an audit trail even if the
         // call to PayU below fails outright.
         const payment = await Payment.create({
@@ -57,9 +72,31 @@ exports.createPayment = async (req, res) => {
             customer_phone,
             amount,
             payment_method: 'UPI',
-            status: 'pending'
+            status: 'pending',
+            fbc: typeof fbc === 'string' ? fbc.slice(0, 255) : null,
+            fbp: typeof fbp === 'string' ? fbp.slice(0, 255) : null,
+            client_ip: getClientIp(req),
+            client_user_agent: (req.headers['user-agent'] || '').toString().slice(0, 512),
+            meta_event_id: metaEventId
         });
 
+        // UPI Autopay mandate registration piggybacks on this same initiate
+        // call — si_details describes the recurring billing terms PayU asks
+        // the customer to consent to alongside this first payment. See
+        // buildSiDetails/buildRequestHash in payu.util.js for the exact
+        // field names/hash formula (confirmed against PayU's own docs).
+        const siDetails = enable_autopay
+            ? buildSiDetails({
+                billingAmount: amount,
+                billingCycle: 'MONTHLY',
+                billingInterval: 1,
+                paymentStartDate: toPayuDate(new Date()),
+                paymentEndDate: toPayuDate(new Date(Date.now() + MANDATE_VALIDITY_YEARS * 365 * 86400000))
+            })
+            : null;
+
+        // si_details does NOT affect this hash (see buildRequestHash's
+        // comment) — only the separate si_details POST param below.
         const hash = buildRequestHash({ key, txnid, amount, productinfo, firstname: customer_name, email: customer_email, salt });
 
         const payuParams = {
@@ -81,6 +118,10 @@ exports.createPayment = async (req, res) => {
             furl: `${backendUrl}/api/payments/callback/failure`,
             hash
         };
+        if (siDetails) {
+            payuParams.si = '1';
+            payuParams.si_details = JSON.stringify(siDetails);
+        }
 
         let payuData;
         try {
@@ -108,6 +149,24 @@ exports.createPayment = async (req, res) => {
             payu_response: JSON.stringify(payuData)
         });
 
+        // Create the Subscription row now (mandate_status:'pending') so it
+        // exists for the frontend to reference and for reconcileWithPayu to
+        // find and confirm once this payment's status is verified — don't
+        // wait for that reconciliation to create it. See
+        // payuReconcile.service.js's pendingMandateSub lookup.
+        if (siDetails) {
+            await Subscription.create({
+                customer_phone,
+                customer_email,
+                plan_id: plan.id,
+                status: 'active',
+                expires_at: new Date(Date.now() + plan.number_of_days * 86400000),
+                autopay_enabled: true,
+                mandate_status: 'pending',
+                last_payment_id: payment.id
+            });
+        }
+
         const upiIntentUrl = `upi://pay?${intentUriData}`;
 
         console.log(`Payment created: txnid=${txnid}, plan=${plan.id}, amount=${amount}`);
@@ -117,7 +176,8 @@ exports.createPayment = async (req, res) => {
             txnid,
             amount,
             upiIntentUrl,
-            status: 'pending'
+            status: 'pending',
+            metaEventId
         });
     } catch (err) {
         console.error('Error creating payment:', err);
@@ -149,7 +209,12 @@ exports.getPaymentStatus = async (req, res) => {
             amount: payment.amount,
             planId: payment.plan_id,
             paymentMethod: payment.payment_method,
-            updatedAt: payment.updated_at
+            updatedAt: payment.updated_at,
+            // Lets the frontend recover the id for a payment resumed via
+            // ?txnid= on a fresh page load (no createPayment call in that
+            // tab), so its Pixel CompleteRegistration call can still dedupe
+            // against the server-side CAPI mirror sent below.
+            metaEventId: payment.meta_event_id
         });
     } catch (err) {
         console.error('Error fetching payment status:', err);
@@ -213,60 +278,4 @@ async function processCallback(payload) {
     }
 
     await reconcileWithPayu(txnid);
-}
-
-// Looks up the authoritative status from PayU and applies it idempotently
-// under a row lock, so concurrent callback/webhook/poll requests can't
-// double-process the same transaction.
-async function reconcileWithPayu(txnid) {
-    const t = await sequelize.transaction();
-    try {
-        const payment = await Payment.findOne({ where: { txnid }, transaction: t, lock: true });
-        if (!payment) {
-            console.warn(`PayU callback/verify for unknown txnid=${txnid}`);
-            await t.commit();
-            return;
-        }
-
-        if (FINAL_STATUSES.includes(payment.status)) {
-            // Already finalized — idempotent no-op for duplicate deliveries.
-            await t.commit();
-            return;
-        }
-
-        let details;
-        try {
-            details = await verifyPaymentWithPayu(txnid);
-        } catch (err) {
-            console.error(`PayU verify_payment call failed for txnid=${txnid}:`, err.message);
-            await payment.update({ last_verified_at: new Date() }, { transaction: t });
-            await t.commit();
-            return;
-        }
-
-        if (!details) {
-            // PayU has no record yet (or the call failed) — leave pending, try again later.
-            await payment.update({ last_verified_at: new Date() }, { transaction: t });
-            await t.commit();
-            return;
-        }
-
-        const newStatus = mapPayuStatus(details.status, details.unmappedstatus);
-
-        await payment.update({
-            status: newStatus,
-            payu_mihpayid: details.mihpayid || payment.payu_mihpayid,
-            payu_bank_ref_num: details.bank_ref_num || null,
-            payu_mode: details.mode || null,
-            payu_response: JSON.stringify(details),
-            error_message: newStatus === 'failed' || newStatus === 'cancelled' ? (details.error_Message || details.field9 || null) : null,
-            last_verified_at: new Date()
-        }, { transaction: t });
-
-        await t.commit();
-        console.log(`Payment txnid=${txnid} reconciled with PayU -> status=${newStatus}`);
-    } catch (err) {
-        await t.rollback();
-        console.error(`Error reconciling payment txnid=${txnid} with PayU:`, err);
-    }
 }

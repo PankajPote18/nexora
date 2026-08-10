@@ -15,6 +15,7 @@ const Badge = require('./Badge');
 const Vendor = require('./Vendor');
 const Tray = require('./Tray');
 const Payment = require('./Payment');
+const Subscription = require('./Subscription');
 
 // Analytics module (see CLAUDE.md §23) — isolated tables, own subfolder.
 // Associations are informational only (no admin/consumer model references
@@ -34,6 +35,13 @@ Payment.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
 SubscriptionPlan.hasMany(Payment, { foreignKey: 'plan_id' });
 Payment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(Payment, { foreignKey: 'user_id' });
+
+// Autopay billing (see CLAUDE.md §9/§22, backend/services/autopayBilling.service.js)
+// — soft references only, same convention as the associations above.
+Subscription.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
+Subscription.belongsTo(Payment, { foreignKey: 'last_payment_id', as: 'lastPayment' });
+Payment.belongsTo(Subscription, { foreignKey: 'subscription_id', as: 'subscription' });
+Subscription.hasMany(Payment, { foreignKey: 'subscription_id' });
 
 // constraints: false — deliberately no DB-level foreign keys, consistent
 // with this project's existing convention for high-volume/soft-referenced
@@ -67,6 +75,7 @@ module.exports = {
     HeroBanner,
     Tray,
     Payment,
+    Subscription,
     Visitor,
     Session,
     PageView,

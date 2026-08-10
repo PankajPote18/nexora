@@ -64,16 +64,17 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
         {/* Title, leftTime and Dot Menu */}
         <div className="mt-1.5 flex items-start justify-between px-1">
           <div className="flex-1 min-w-0 pr-2">
-            <h3 className="text-[11px] md:text-[12px] font-semibold text-white truncate group-hover:text-[#00A8E1] transition-colors">{movie.title}</h3>
-            <p className="text-[9px] md:text-[10px] text-gray-400 mt-0.5 truncate">{mockLeftTime}</p>
+            <h3 className="text-xs font-semibold text-white truncate group-hover:text-[#00A8E1] transition-colors">{movie.title}</h3>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{mockLeftTime}</p>
           </div>
           <button
             type="button"
+            aria-label={`More options for ${movie.title}`}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
             }}
-            className="text-gray-400 hover:text-white p-1 rounded-full transition-colors cursor-pointer"
+            className="text-gray-400 hover:text-white p-1.5 rounded-full transition-colors cursor-pointer"
           >
             <MoreVertical size={14} />
           </button>
@@ -114,16 +115,16 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
 
           {/* Title Overlay on Hover */}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-0 group-hover:opacity-100 flex flex-col justify-end p-3 transition-opacity duration-300 z-20">
-            <span className="text-[#00A8E1] text-[9px] font-bold uppercase tracking-wider mb-0.5">
+            <span className="text-[#00A8E1] text-xs font-bold uppercase tracking-wider mb-0.5">
               {movie.category || movie.genre || 'SHOW'}
             </span>
-            <h4 className="text-xs font-bold text-white leading-tight line-clamp-2">
+            <h3 className="text-xs font-bold text-white leading-tight line-clamp-2">
               {movie.title}
-            </h4>
+            </h3>
           </div>
         </div>
 
-        <div className="mt-1.5 px-1 text-gray-300 font-semibold text-[11px] md:text-[12px] truncate group-hover:text-[#00A8E1] transition-colors">
+        <div className="mt-1.5 px-1 text-gray-300 font-semibold text-xs truncate group-hover:text-[#00A8E1] transition-colors">
           {movie.title}
         </div>
       </Link>
@@ -175,16 +176,16 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
 
           {/* Title Overlay on Hover */}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-0 group-hover:opacity-100 flex flex-col justify-end p-3 transition-opacity duration-300 z-20">
-            <span className="text-[#00A8E1] text-[9px] font-bold uppercase tracking-wider mb-0.5">
+            <span className="text-[#00A8E1] text-xs font-bold uppercase tracking-wider mb-0.5">
               {movie.category || movie.genre || 'TRENDING'}
             </span>
-            <h4 className="text-xs font-bold text-white leading-tight line-clamp-2">
+            <h3 className="text-xs font-bold text-white leading-tight line-clamp-2">
               {movie.title}
-            </h4>
+            </h3>
           </div>
         </div>
 
-        <div className="mt-1.5 px-1 text-gray-300 font-semibold text-[11px] md:text-[12px] truncate group-hover:text-[#00A8E1] transition-colors relative z-10">
+        <div className="mt-1.5 px-1 text-gray-300 font-semibold text-xs truncate group-hover:text-[#00A8E1] transition-colors relative z-10">
           {movie.title}
         </div>
       </Link>
@@ -225,16 +226,16 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
 
         {/* Title Overlay on Hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-0 group-hover:opacity-100 flex flex-col justify-end p-3 transition-opacity duration-300 z-20">
-          <span className="text-[#00A8E1] text-[9px] font-bold uppercase tracking-wider mb-0.5">
+          <span className="text-[#00A8E1] text-xs font-bold uppercase tracking-wider mb-0.5">
             {movie.category || movie.genre || 'SHOW'}
           </span>
-          <h4 className="text-xs font-bold text-white leading-tight line-clamp-2">
+          <h3 className="text-xs font-bold text-white leading-tight line-clamp-2">
             {movie.title}
-          </h4>
+          </h3>
         </div>
       </div>
 
-      <div className="mt-1.5 px-1 text-gray-300 font-semibold text-[11px] md:text-[12px] truncate group-hover:text-[#00A8E1] transition-colors">
+      <div className="mt-1.5 px-1 text-gray-300 font-semibold text-xs truncate group-hover:text-[#00A8E1] transition-colors">
         {movie.title}
       </div>
     </Link>

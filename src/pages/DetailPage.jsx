@@ -125,7 +125,7 @@ const DetailPage = () => {
 
           {/* Badges & Genres */}
           <div className="flex flex-wrap items-center gap-2 lg:gap-3 mb-4 lg:mb-6">
-            <span className="px-3 py-1 lg:py-1.5 bg-[#00A8E1]/10 text-[#00A8E1] border border-[#00A8E1]/20 rounded-lg font-bold text-[11px] lg:text-[13px] tracking-wide">
+            <span className="px-3 py-1 lg:py-1.5 bg-[#00A8E1]/10 text-[#00A8E1] border border-[#00A8E1]/20 rounded-lg font-bold text-xs lg:text-[13px] tracking-wide">
               {movie.ageRating || 'U/A 13+'}
             </span>
 
@@ -135,7 +135,7 @@ const DetailPage = () => {
                 .map((genre, idx) => (
                   <span
                     key={idx}
-                    className="px-3 py-1 lg:py-1.5 bg-white/5 rounded-lg text-[11px] lg:text-[13px] text-gray-300 font-bold tracking-wide"
+                    className="px-3 py-1 lg:py-1.5 bg-white/5 rounded-lg text-xs lg:text-[13px] text-gray-300 font-bold tracking-wide"
                   >
                     {genre}
                   </span>

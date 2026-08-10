@@ -93,8 +93,8 @@ export function trackContact(params = {}) {
     trackEvent('Contact', params, { providers: ['meta'] });
 }
 
-export function trackCompleteRegistration({ status = true, value, currency } = {}) {
-    trackEvent('CompleteRegistration', { status, value, currency }, { providers: ['meta'] });
+export function trackCompleteRegistration({ status = true, value, currency, eventId } = {}) {
+    trackEvent('CompleteRegistration', { status, value, currency }, { providers: ['meta'], eventId });
 }
 
 export function trackSearch({ searchString, contentCategory } = {}) {

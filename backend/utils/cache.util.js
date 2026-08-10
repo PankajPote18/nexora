@@ -30,7 +30,27 @@ const cache = new LRUCache({ max: 500 });
 // repopulates the cache) — exactly the kind of "unnecessary duplicate
 // queries" that pressures the connection pool hardest during a burst.
 const pendingWaiters = new Map(); // key -> array of { res, timeoutId }
-const STAMPEDE_WAIT_TIMEOUT_MS = 8000;
+
+// Must comfortably exceed db.config.js's pool `acquire` timeout (10000ms —
+// see DB_POOL_MAX/acquire there). A waiter that gives up *before* the leader
+// could possibly have failed on its own doesn't fail safely, it makes things
+// worse: this fallback calls next() directly, which runs the controller
+// (and its own DB query) completely independently of the leader/cache, with
+// no coalescing at all. Under load, the leader's own query is most likely
+// slow for the exact same reason many requests piled up here in the first
+// place — pool contention — so every waiter bailing out at 8s (< the 10s a
+// stuck leader is still allowed to legitimately take while waiting on the
+// pool) each add one more independent connection request on top of an
+// already-saturated pool, at the worst possible moment. That's a
+// self-reinforcing thundering herd, not a safety valve, and matches exactly
+// the fast-median/long-tail/occasional-hard-failure pattern seen under a
+// 3000-VU run (p95 1.6s, max 11.18s, ~0.6% hard failures concentrated on
+// cached-but-cold-under-load endpoints). Set above acquire + a margin for
+// the query itself to actually run once a connection is acquired, so a
+// waiter only ever falls back to its own independent query once the leader
+// is already known to be past the point where it could still legitimately
+// succeed.
+const STAMPEDE_WAIT_TIMEOUT_MS = 15000;
 
 // Keys by the full request URL (path + query string), so `/api/movies?page=2`
 // and `/api/movies?page=1` are cached independently.

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { trackPageview } from './tracker';
 import { loadGoogleAnalytics, loadGoogleTagManager, trackGaPageview } from './gaLoader';
+import { deferToIdle } from './deferToIdle';
 
 // Paths this analytics module deliberately never tracks as visitor traffic:
 // the admin CMS and the analytics dashboard itself — otherwise the site
@@ -28,8 +29,14 @@ export function useAnalyticsTracker() {
     const lastTrackedKey = useRef(null);
 
     useEffect(() => {
-        loadGoogleAnalytics();
-        loadGoogleTagManager();
+        // GA4/GTM are third-party, non-critical to this app's own UI — defer
+        // their script injection off the critical path (see deferToIdle.js).
+        // This app's own first-party pageview (trackPageview, below) is
+        // unaffected — it's not a third-party script and stays immediate.
+        deferToIdle(() => {
+            loadGoogleAnalytics();
+            loadGoogleTagManager();
+        });
     }, []);
 
     useEffect(() => {

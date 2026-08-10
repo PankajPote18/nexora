@@ -25,10 +25,33 @@ const sha512 = (str) => crypto.createHash('sha512').update(str).digest('hex');
 
 // Request hash for initiating a payment:
 // sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||SALT)
+//
+// NOTE: PayU's docs page embeds a "hash tester" JS snippet that folds
+// JSON.stringify(si_details) into this hash for UPI Autopay mandate
+// registration — that turned out to be wrong for the live test endpoint.
+// Confirmed empirically: PayU's own EX087 hash-mismatch error message
+// (received when following that snippet) states the correct hash for a live
+// si:'1' transaction uses this exact plain formula, with si_details having
+// no effect on the hash at all — only on the separate si_details request
+// param. Left un-parameterized on purpose; do not reintroduce si_details
+// here without re-confirming against a live PayU response first.
 const buildRequestHash = ({ key, txnid, amount, productinfo, firstname, email, udf1 = '', udf2 = '', udf3 = '', udf4 = '', udf5 = '', salt }) => {
     const parts = [key, txnid, amount, productinfo, firstname, email, udf1, udf2, udf3, udf4, udf5, '', '', '', '', '', salt];
     return sha512(parts.join('|'));
 };
+
+// Builds the si_details object PayU's UPI Autopay mandate-registration flow
+// expects (sent as a JSON-stringified request param alongside si:'1', and
+// folded into buildRequestHash above) — field names/shape confirmed against
+// PayU's own docs page. paymentStartDate/paymentEndDate must be 'YYYY-MM-DD'.
+const buildSiDetails = ({ billingAmount, billingCycle = 'MONTHLY', billingInterval = 1, paymentStartDate, paymentEndDate, billingCurrency = 'INR' }) => ({
+    billingAmount: String(billingAmount),
+    billingCurrency,
+    billingCycle,
+    billingInterval,
+    paymentStartDate,
+    paymentEndDate
+});
 
 // Reverse hash for verifying a PayU response (surl/furl/webhook payload):
 // sha512(SALT|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
@@ -129,6 +152,84 @@ const verifyPaymentWithPayu = async (txnid) => {
     return details || null;
 };
 
+// PayU/NPCI requires a pre-debit notification to the customer before every
+// UPI Autopay recurring charge (command=pre_debit_SI, same base URL as
+// verify_payment/si_transaction — see docs.payu.in/reference/
+// pre_debit_notification_api). Confirmed empirically: si_transaction
+// rejects with error_code E1702 ("Notifying consumer is mandatory. Please
+// initiate Notification API") if this hasn't been called first. In
+// production this should be sent well ahead of the actual debit (PayU
+// requires 48h notice for most UPI billing cycles, 24h for
+// daily/adhoc) via its own schedule — this test-focused implementation
+// calls it immediately before triggerRecurringCharge for simplicity, since
+// the goal here is validating the pipeline mechanics end-to-end, not real
+// production NPCI compliance timing.
+const triggerPreDebitNotification = async ({ key, authpayuid, amount, debitDate, salt }) => {
+    const env = getPayuEnv();
+    const command = 'pre_debit_SI';
+    const var1 = JSON.stringify({ authpayuid, requestId: crypto.randomUUID(), debitDate, amount });
+    const hash = buildVerifyHash({ key, command, var1, salt });
+
+    const body = new URLSearchParams({ key, command, var1, hash }).toString();
+
+    const response = await fetch(VERIFY_URL[env], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error(`PayU pre_debit_SI response was not valid JSON: ${text.slice(0, 500)}`);
+    }
+
+    if (!response.ok) {
+        throw new Error(`PayU pre_debit_SI call failed with status ${response.status}: ${text.slice(0, 500)}`);
+    }
+
+    return data;
+};
+
+// Triggers a recurring debit against an already-registered UPI Autopay
+// mandate (command=si_transaction, same base URL as verify_payment — see
+// docs.payu.in/reference/recurring_payment_api). authpayuid must be the
+// payu_mihpayid captured from the original mandate-registration payment.
+// Returns PayU's raw parsed response — callers must NOT treat this as the
+// final word on success; re-verify via verifyPaymentWithPayu(txnid)
+// afterward, same "never trust a single unverified signal" rule
+// payment.controller.js's processCallback already documents.
+const triggerRecurringCharge = async ({ key, authpayuid, amount, txnid, phone, email, salt }) => {
+    const env = getPayuEnv();
+    const command = 'si_transaction';
+    const var1 = JSON.stringify({ authpayuid, amount, txnid, phone, email });
+    const hash = buildVerifyHash({ key, command, var1, salt });
+
+    const body = new URLSearchParams({ key, command, var1, hash }).toString();
+
+    const response = await fetch(VERIFY_URL[env], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error(`PayU si_transaction response was not valid JSON: ${text.slice(0, 500)}`);
+    }
+
+    if (!response.ok) {
+        throw new Error(`PayU si_transaction call failed with status ${response.status}: ${text.slice(0, 500)}`);
+    }
+
+    return data;
+};
+
 // Maps PayU's status/unmappedstatus to this app's internal payment status.
 // PayU's verify_payment API only documents success|failure|pending — there is no
 // separate documented "cancelled" enum, so a failure is treated as "cancelled"
@@ -155,10 +256,13 @@ module.exports = {
     getPayuEnv,
     generateTxnId,
     buildRequestHash,
+    buildSiDetails,
     buildResponseHash,
     verifyResponseHash,
     buildVerifyHash,
     initiateUpiIntentPayment,
     verifyPaymentWithPayu,
+    triggerPreDebitNotification,
+    triggerRecurringCharge,
     mapPayuStatus
 };

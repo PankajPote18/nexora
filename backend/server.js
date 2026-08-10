@@ -51,6 +51,19 @@ const perWorkerPoolMax = Math.max(5, Math.floor(TOTAL_DB_POOL_BUDGET / numWorker
 if (cluster.isPrimary) {
     console.log(`Primary ${process.pid} starting ${numWorkers} worker(s)...`);
 
+    // The primary never serves HTTP (see the isPrimary/else split below) —
+    // it only does the one-time sync/seed below and, afterwards, the autopay
+    // billing cron's periodic queries (see the comment further down on why
+    // its connection now stays open). Without an explicit DB_POOL_MAX here,
+    // db.config.js's own default (30 — the same number the *entire* worker
+    // fleet's budget is supposed to sum to, see TOTAL_DB_POOL_BUDGET above)
+    // would apply to the primary's pool too, silently making the real
+    // worst-case connection ceiling (workers' budget + primary's own
+    // default) larger than documented/intended. The primary genuinely only
+    // ever needs a couple of connections at a time, so give it a small,
+    // explicit share instead of an unused 30-connection allowance.
+    process.env.DB_POOL_MAX = String(Math.max(2, Math.floor(TOTAL_DB_POOL_BUDGET / 10)));
+
     // DB sync/seed must happen exactly once, not once per worker — running
     // sequelize.sync({ alter: true }) and the seed-if-empty checks
     // concurrently from multiple processes risks duplicate seed rows (a
@@ -152,6 +165,29 @@ if (cluster.isPrimary) {
                 console.error('[reminder] failed to start reminder pipeline (non-fatal):', err.message);
             }
 
+            // Autopay billing pipeline (RabbitMQ + cron, PayU UPI Autopay
+            // recurring debits — see backend/jobs|queues|workers/
+            // autopayBilling.* + services/autopayBilling.service.js). Same
+            // primary-only reasoning as the reminder pipeline above. Unlike
+            // that in-memory demo feature, this one is DB-backed and drives
+            // real payment attempts — there's no boot-time test seed here;
+            // test data comes from a real checkout plus
+            // scripts/testAutopayExpiry.js compressing a real subscription's
+            // expires_at.
+            let stopAutopayBillingCronFn = null;
+            try {
+                const { startAutopayBillingCron, stopAutopayBillingCron } = require('./jobs/autopayBilling.cron');
+                const { startAutopayBillingWorker } = require('./workers/autopayBilling.worker');
+
+                startAutopayBillingCron();
+                stopAutopayBillingCronFn = stopAutopayBillingCron;
+                startAutopayBillingWorker().catch((err) => {
+                    console.error('[autopay] worker failed to start (non-fatal):', err.message);
+                });
+            } catch (err) {
+                console.error('[autopay] failed to start autopay billing pipeline (non-fatal):', err.message);
+            }
+
             // Analytics nightly rollup (see CLAUDE.md §23) — same reasoning
             // as the reminder cron above: must run exactly once, not once
             // per worker, so it lives in the primary only. The per-request
@@ -166,11 +202,14 @@ if (cluster.isPrimary) {
                 console.error('[analytics] failed to start rollup cron (non-fatal):', err.message);
             }
 
-            // The primary itself never serves HTTP traffic or holds a
-            // request-serving connection pool open — close it so it isn't
-            // sitting on idle connections for no reason once workers (each
-            // with their own pool) take over.
-            await sequelize.close();
+            // The primary itself never serves HTTP traffic, but — unlike the
+            // in-memory reminder pipeline — the autopay billing cron above
+            // runs real DB queries (getDueSubscriptions/reconcileWithPayu)
+            // from this same primary process on every tick for the lifetime
+            // of the process, so its Sequelize connection can no longer be
+            // closed here. (Previously this closed unconditionally, since
+            // nothing in the primary touched the DB after boot — that's no
+            // longer true.)
 
             const workers = new Set();
             const forkWorker = () => {
@@ -209,6 +248,20 @@ if (cluster.isPrimary) {
             // the listen port instead of exiting with their parent.
             const shutdown = () => {
                 shuttingDown = true;
+                // Stop the autopay billing cron from enqueueing any new
+                // recurring-charge job during shutdown — this pipeline moves
+                // real money against a real payment gateway, a materially
+                // worse failure mode than the reminder pipeline's log-only
+                // work if killed mid-flight, so (unlike that pipeline) it
+                // gets an explicit stop here rather than just dying with the
+                // process.
+                if (stopAutopayBillingCronFn) {
+                    try {
+                        stopAutopayBillingCronFn();
+                    } catch (err) {
+                        console.error('[autopay] error stopping billing cron during shutdown:', err.message);
+                    }
+                }
                 for (const worker of workers) {
                     worker.kill();
                 }

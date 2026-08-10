@@ -52,7 +52,7 @@ const MovieRow = ({ title, movies, cardType = 'square' }) => {
     >
       <div className="flex items-center justify-between mb-1.5 md:mb-2 w-full">
         <h2 className="text-base font-semibold md:text-lg text-white tracking-wide">{title}</h2>
-        <Link to="#" className="text-brand hover:text-white transition-colors text-[10px] md:text-xs font-semibold flex items-center whitespace-nowrap flex-shrink-0">
+        <Link to="#" className="text-brand hover:text-white transition-colors text-xs font-semibold flex items-center whitespace-nowrap flex-shrink-0">
           See All <ChevronRight size={12} className="ml-0.5" />
         </Link>
       </div>
@@ -88,6 +88,7 @@ const MovieRow = ({ title, movies, cardType = 'square' }) => {
         {/* Custom Navigation Buttons (Desktop only) */}
         <button
           ref={prevRef}
+          aria-label={`Previous ${title}`}
           className={`absolute top-0 bottom-0 left-[-20px] z-40 w-10 bg-black/60 hover:bg-black/95 hidden md:flex items-center justify-center text-white transition-opacity duration-300 backdrop-blur-sm rounded-l-xl cursor-pointer ${isHovered ? 'opacity-100' : 'opacity-0'
             }`}
         >
@@ -95,6 +96,7 @@ const MovieRow = ({ title, movies, cardType = 'square' }) => {
         </button>
         <button
           ref={nextRef}
+          aria-label={`Next ${title}`}
           className={`absolute top-0 bottom-0 right-[-20px] z-40 w-10 bg-black/60 hover:bg-black/95 hidden md:flex items-center justify-center text-white transition-opacity duration-300 backdrop-blur-sm rounded-r-xl cursor-pointer ${isHovered ? 'opacity-100' : 'opacity-0'
             }`}
         >

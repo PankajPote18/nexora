@@ -378,7 +378,7 @@ const PlayerPage = () => {
               className="text-white hover:text-gray-300 hover:scale-110 transition-transform p-4 relative"
             >
               <RotateCcw size={48} strokeWidth={1.5} />
-              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold mt-1">10</span>
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold mt-1">10</span>
             </button>
 
             <button
@@ -397,7 +397,7 @@ const PlayerPage = () => {
               className="text-white hover:text-gray-300 hover:scale-110 transition-transform p-4 relative"
             >
               <RotateCw size={48} strokeWidth={1.5} />
-              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold mt-1">10</span>
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold mt-1">10</span>
             </button>
           </div>
 
