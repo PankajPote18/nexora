@@ -18,7 +18,15 @@
          fallback) because PlayerPage.jsx's <video>/<track> elements load
          movie/trailer/subtitle files straight from the Bunny CDN — without
          this, every video 404s client-side with a silent CSP block, not an
-         obvious network error. style-src needs 'unsafe-inline' because
+         obvious network error. connect-src also allowlists
+         signals.birch.click and one fixed ca-*.ecs.us-east-2.on.aws host —
+         this is Birch Hub's "Signals Gateway", a third-party relay enabled
+         on the Meta Pixel/Events Manager side for this Pixel ID (not
+         anything this codebase configures — see src/analytics/metaPixel.js,
+         which never references Birch). The AWS host isn't a wildcard
+         because it's been confirmed stable across multiple page loads for
+         this account; if Birch ever reprovisions it, this exact origin will
+         need updating again. style-src needs 'unsafe-inline' because
          Swiper (carousels) and several components' inline style={{...}}
          attributes rely on it — removing it would break carousel
          positioning, not a security fix worth that cost here. NOTE:
@@ -29,7 +37,7 @@
          file/Express middleware, depending on the host chosen) — flag this
          to the user rather than guessing at a host that may not match
          reality. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://clickbuz-media.b-cdn.net https://www.facebook.com https://images.unsplash.com https://picsum.photos; media-src 'self' https://clickbuz-media.b-cdn.net; font-src 'self' data:; connect-src 'self' %VITE_API_URL% https://www.facebook.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://clickbuz-media.b-cdn.net https://www.facebook.com https://images.unsplash.com https://picsum.photos; media-src 'self' https://clickbuz-media.b-cdn.net; font-src 'self' data:; connect-src 'self' %VITE_API_URL% https://www.facebook.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://signals.birch.click https://ca-e378c80be3e6414fbf602b3d9bdb79e5.ecs.us-east-2.on.aws; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self';" />
     <!-- Warm up the connection to the API host before the app's first fetch
          fires, so DNS/TLS negotiation isn't on the critical path. -->
     <link rel="preconnect" href="%VITE_API_URL%" crossorigin />
