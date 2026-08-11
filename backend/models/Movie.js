@@ -53,7 +53,7 @@ const Movie = sequelize.define('Movie', {
             const rawValue = this.getDataValue('genres');
             try {
                 return rawValue ? JSON.parse(rawValue) : [];
-            } catch(e) {
+            } catch {
                 return rawValue ? rawValue.split(',') : [];
             }
         }

@@ -50,7 +50,7 @@ exports.createPayment = async (req, res) => {
         }
 
         const txnid = generateTxnId();
-        const amount = Number(plan.discounted_price).toFixed(2);
+        const amount = Number(plan.original_price).toFixed(2);
         const productinfo = `ClickBuz ${plan.name} Subscription`;
         const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
 

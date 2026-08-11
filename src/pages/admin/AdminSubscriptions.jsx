@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Edit2, Check, X, Loader2 } from 'lucide-react';
+import { Search, Edit2, Trash2, Plus, Check, X, Loader2 } from 'lucide-react';
 import { plansApi } from '../../services/api';
 
 // Custom Toggle Component matching the reference UI
@@ -16,31 +16,39 @@ const CustomToggle = ({ isOn, onToggle }) => (
   </button>
 );
 
+const EMPTY_PLAN = {
+  name: '',
+  original_price: '',
+  billing_cycle: 'WEEKLY',
+  number_of_days: '',
+  sort_order: 1,
+  is_recommended: false,
+};
+
 const AdminSubscriptions = () => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [editingPlan, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  // Inactive plans are hidden by default (some may be undeletable due to
+  // real payment history referencing them, e.g. old test plans) — this lets
+  // an admin still find and manage/reactivate one when actually needed.
+  const [showInactive, setShowInactive] = useState(false);
 
-  // ── Fetch all plans from backend ───────────────────────────────────────
-  const fetchPlans = () => {
+  // ── Fetch plans from backend ────────────────────────────────────────────
+  const fetchPlans = (includeInactive) => {
     setLoading(true);
     plansApi
-      .getAll()
+      .getAll(!includeInactive)
       .then(setPlans)
       .catch((err) => console.error('Plans fetch failed:', err))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchPlans(); }, []);
-
-  // ── Computed discount % ────────────────────────────────────────────────
-  const discountPct = (plan) => {
-    if (!plan.original_price || plan.original_price === 0) return '0.00 %';
-    const pct = ((plan.original_price - plan.discounted_price) / plan.original_price) * 100;
-    return `${pct.toFixed(2)} %`;
-  };
+  useEffect(() => { fetchPlans(showInactive); }, [showInactive]);
 
   // ── Toggle status (uses dedicated toggle endpoint) ─────────────────────
   const toggleStatus = async (plan) => {
@@ -57,24 +65,50 @@ const AdminSubscriptions = () => {
   // ── Open edit modal ────────────────────────────────────────────────────
   const handleEdit = (plan) => {
     setEditing({ ...plan });
+    setIsCreating(false);
     setModal(true);
   };
 
-  // ── Save updated plan ──────────────────────────────────────────────────
+  // ── Open add modal ─────────────────────────────────────────────────────
+  const handleAddNew = () => {
+    setEditing({ ...EMPTY_PLAN, sort_order: plans.length + 1 });
+    setIsCreating(true);
+    setModal(true);
+  };
+
+  // ── Delete a plan ──────────────────────────────────────────────────────
+  const handleDelete = async (plan) => {
+    if (!window.confirm(`Delete "${plan.name}"? This cannot be undone.`)) return;
+    setDeletingId(plan.id);
+    try {
+      await plansApi.remove(plan.id);
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id));
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // ── Save (create or update) ────────────────────────────────────────────
   const handleSave = async () => {
     setSaving(true);
     try {
       const payload = {
         name: editingPlan.name,
         original_price: parseFloat(editingPlan.original_price),
-        discounted_price: parseFloat(editingPlan.discounted_price),
         billing_cycle: editingPlan.billing_cycle,
         number_of_days: parseInt(editingPlan.number_of_days),
         sort_order: parseInt(editingPlan.sort_order),
         is_recommended: editingPlan.is_recommended,
       };
-      const updated = await plansApi.update(editingPlan.id, payload);
-      setPlans((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      if (isCreating) {
+        const created = await plansApi.create(payload);
+        setPlans((prev) => [...prev, created]);
+      } else {
+        const updated = await plansApi.update(editingPlan.id, payload);
+        setPlans((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      }
       setModal(false);
     } catch (err) {
       alert('Save failed: ' + err.message);
@@ -87,22 +121,41 @@ const AdminSubscriptions = () => {
     <div className="w-full h-auto md:h-full flex flex-col">
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <div className="flex items-center space-x-2">
-          <span className="text-gray-400 font-medium text-sm">Results :</span>
-          <select className="bg-[#141a29] border border-gray-700 text-white rounded-md px-3 py-1.5 outline-none focus:border-[#3b82f6] text-sm font-medium cursor-pointer">
-            <option>10</option>
-            <option>25</option>
-            <option>50</option>
-          </select>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-gray-400 font-medium text-sm">Results :</span>
+            <select className="bg-[#141a29] border border-gray-700 text-white rounded-md px-3 py-1.5 outline-none focus:border-[#3b82f6] text-sm font-medium cursor-pointer">
+              <option>10</option>
+              <option>25</option>
+              <option>50</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="w-4 h-4 accent-[#3b82f6]"
+            />
+            <span className="text-gray-400 text-sm font-medium">Show inactive plans</span>
+          </label>
         </div>
 
-        <div className="relative w-full sm:w-auto">
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-[#141a29] border border-gray-700 text-white rounded-full pl-4 pr-10 py-1.5 outline-none focus:border-[#3b82f6] text-sm w-full sm:w-64 placeholder-gray-500 transition-all focus:shadow-[0_0_10px_rgba(59,130,246,0.3)]"
-          />
-          <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto">
+            <input
+              type="text"
+              placeholder="Search..."
+              className="bg-[#141a29] border border-gray-700 text-white rounded-full pl-4 pr-10 py-1.5 outline-none focus:border-[#3b82f6] text-sm w-full sm:w-64 placeholder-gray-500 transition-all focus:shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+            />
+            <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          </div>
+          <button
+            onClick={handleAddNew}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#3b82f6] hover:bg-[#2563eb] text-white text-sm font-semibold transition-colors shrink-0"
+          >
+            <Plus size={16} /> Add Plan
+          </button>
         </div>
       </div>
 
@@ -115,8 +168,6 @@ const AdminSubscriptions = () => {
                 <th className="px-6 py-4 w-12"><div className="w-4 h-4 rounded bg-[#334155]"></div></th>
                 <th className="px-6 py-4">Name</th>
                 <th className="px-6 py-4">Original Price</th>
-                <th className="px-6 py-4 text-[#3b82f6]">Discounted Price</th>
-                <th className="px-6 py-4">Discount %</th>
                 <th className="px-6 py-4">Billing Cycle</th>
                 <th className="px-6 py-4">Number of Days</th>
                 <th className="px-6 py-4">Sorting Number</th>
@@ -128,13 +179,13 @@ const AdminSubscriptions = () => {
             <tbody className="divide-y divide-gray-800/50">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-10 text-center">
+                  <td colSpan={9} className="px-6 py-10 text-center">
                     <Loader2 className="animate-spin mx-auto text-[#3b82f6]" size={24} />
                   </td>
                 </tr>
               ) : plans.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-10 text-center text-gray-500">No plans found.</td>
+                  <td colSpan={9} className="px-6 py-10 text-center text-gray-500">No plans found.</td>
                 </tr>
               ) : (
                 plans.map((plan) => (
@@ -144,8 +195,6 @@ const AdminSubscriptions = () => {
                     </td>
                     <td className="px-6 py-4 font-medium text-white">{plan.name}</td>
                     <td className="px-6 py-4">{parseFloat(plan.original_price).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-[#3b82f6] font-medium">{parseFloat(plan.discounted_price).toFixed(2)}</td>
-                    <td className="px-6 py-4">{discountPct(plan)}</td>
                     <td className="px-6 py-4">{plan.billing_cycle}</td>
                     <td className="px-6 py-4">{plan.number_of_days}</td>
                     <td className="px-6 py-4">{plan.sort_order}</td>
@@ -160,9 +209,18 @@ const AdminSubscriptions = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex justify-center">
+                      <div className="flex justify-center items-center gap-3">
                         <button onClick={() => handleEdit(plan)} className="text-gray-400 hover:text-[#3b82f6] transition-colors">
                           <Edit2 size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(plan)}
+                          disabled={deletingId === plan.id}
+                          className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                        >
+                          {deletingId === plan.id
+                            ? <Loader2 size={18} className="animate-spin" />
+                            : <Trash2 size={18} />}
                         </button>
                       </div>
                     </td>
@@ -189,14 +247,16 @@ const AdminSubscriptions = () => {
         </div>
       </div>
 
-      {/* Edit Modal — exact same UI as before, now wired to API */}
+      {/* Add/Edit Modal — exact same UI as before, discount fields removed */}
       {isModalOpen && editingPlan && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#1e2638] rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl border border-gray-700/50 flex flex-col" style={{ boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' }}>
 
             {/* Modal Header */}
             <div className="p-4 md:p-6 border-b border-gray-700/50 shrink-0">
-              <h2 className="text-lg md:text-xl font-bold text-white tracking-wide">Update Subscription Plan</h2>
+              <h2 className="text-lg md:text-xl font-bold text-white tracking-wide">
+                {isCreating ? 'Add Subscription Plan' : 'Update Subscription Plan'}
+              </h2>
             </div>
 
             {/* Modal Body */}
@@ -223,19 +283,6 @@ const AdminSubscriptions = () => {
                   step="0.01"
                   value={editingPlan.original_price || ''}
                   onChange={(e) => setEditing({ ...editingPlan, original_price: e.target.value })}
-                  className="w-full bg-[#3b82f6]/20 border-none text-[#4aa5ff] rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-[#3b82f6]/50 font-medium transition-all"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-white tracking-wide flex items-center">
-                  Discounted Price <span className="text-red-500 ml-1">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editingPlan.discounted_price || ''}
-                  onChange={(e) => setEditing({ ...editingPlan, discounted_price: e.target.value })}
                   className="w-full bg-[#3b82f6]/20 border-none text-[#4aa5ff] rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-[#3b82f6]/50 font-medium transition-all"
                 />
               </div>
@@ -274,16 +321,17 @@ const AdminSubscriptions = () => {
                 <input
                   type="number"
                   min={1}
-                  max={plans.length}
+                  max={isCreating ? plans.length + 1 : plans.length}
                   value={editingPlan.sort_order || ''}
                   onChange={(e) => {
+                    const max = isCreating ? plans.length + 1 : plans.length;
                     const val = parseInt(e.target.value) || 1;
-                    setEditing({ ...editingPlan, sort_order: Math.min(Math.max(val, 1), plans.length) });
+                    setEditing({ ...editingPlan, sort_order: Math.min(Math.max(val, 1), max) });
                   }}
                   className="w-full bg-[#3b82f6]/20 border-none text-[#4aa5ff] rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-[#3b82f6]/50 font-medium transition-all"
                 />
                 <p className="text-xs text-gray-500">
-                  Valid range: 1 – {plans.length}
+                  Valid range: 1 – {isCreating ? plans.length + 1 : plans.length}
                 </p>
               </div>
 

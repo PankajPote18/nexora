@@ -104,7 +104,7 @@ const initiateUpiIntentPayment = async (params) => {
     let data;
     try {
         data = JSON.parse(text);
-    } catch (e) {
+    } catch {
         throw new Error(`PayU initiate response was not valid JSON: ${text.slice(0, 500)}`);
     }
 
@@ -137,7 +137,7 @@ const verifyPaymentWithPayu = async (txnid) => {
     let data;
     try {
         data = JSON.parse(text);
-    } catch (e) {
+    } catch {
         throw new Error(`PayU verify response was not valid JSON: ${text.slice(0, 500)}`);
     }
 
@@ -182,7 +182,7 @@ const triggerPreDebitNotification = async ({ key, authpayuid, amount, debitDate,
     let data;
     try {
         data = JSON.parse(text);
-    } catch (e) {
+    } catch {
         throw new Error(`PayU pre_debit_SI response was not valid JSON: ${text.slice(0, 500)}`);
     }
 
@@ -219,7 +219,7 @@ const triggerRecurringCharge = async ({ key, authpayuid, amount, txnid, phone, e
     let data;
     try {
         data = JSON.parse(text);
-    } catch (e) {
+    } catch {
         throw new Error(`PayU si_transaction response was not valid JSON: ${text.slice(0, 500)}`);
     }
 

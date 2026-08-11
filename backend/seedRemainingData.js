@@ -13,11 +13,9 @@ const run = async () => {
 
         // Seed Subscription Plans
         const plans = [
-            { name: 'Basic', original_price: 9.99, discounted_price: 7.99, billing_cycle: 'Monthly', number_of_days: 30, sort_order: 1, is_recommended: false },
-            { name: 'Standard', original_price: 15.99, discounted_price: 12.99, billing_cycle: 'Monthly', number_of_days: 30, sort_order: 2, is_recommended: true },
-            { name: 'Premium', original_price: 19.99, discounted_price: 15.99, billing_cycle: 'Monthly', number_of_days: 30, sort_order: 3, is_recommended: false },
-            { name: 'Annual Basic', original_price: 119.88, discounted_price: 79.99, billing_cycle: 'Yearly', number_of_days: 365, sort_order: 4, is_recommended: false },
-            { name: 'Annual Premium', original_price: 239.88, discounted_price: 149.99, billing_cycle: 'Yearly', number_of_days: 365, sort_order: 5, is_recommended: true }
+            { name: 'Weekly', original_price: 79, billing_cycle: 'WEEKLY', number_of_days: 7, sort_order: 1, is_recommended: false },
+            { name: 'Monthly', original_price: 129, billing_cycle: 'MONTHLY', number_of_days: 30, sort_order: 2, is_recommended: true },
+            { name: 'Yearly', original_price: 499, billing_cycle: 'YEARLY', number_of_days: 365, sort_order: 3, is_recommended: false }
         ];
         await SubscriptionPlan.bulkCreate(plans);
         console.log('Subscription Plans seeded.');
@@ -52,7 +50,7 @@ const run = async () => {
         try {
             await HeroBanner.bulkCreate(extraBanners, { ignoreDuplicates: true });
             console.log('Extra Hero Banners seeded.');
-        } catch (e) {
+        } catch {
             console.log('Extra Hero Banners already exist or failed.');
         }
 

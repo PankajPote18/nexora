@@ -4,8 +4,8 @@ import 'swiper/css';
 import 'swiper/css/effect-fade';
 import 'swiper/css/pagination';
 import 'swiper/css/navigation';
-import { Plus, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { preload } from 'react-dom';
 import { bunnyImageUrl, bunnyImageSrcSet } from '../utils/bunnyImage';
@@ -13,10 +13,9 @@ import { prefetchDetailPage } from '../utils/prefetch';
 
 const HERO_WIDTHS = [800, 1200, 1920];
 
-const HeroCarousel = ({ movies, showSearch = false }) => {
+const HeroCarousel = ({ movies }) => {
   const [prevEl, setPrevEl] = useState(null);
   const [nextEl, setNextEl] = useState(null);
-  const navigate = useNavigate();
   const [deviceMode, setDeviceMode] = useState('desktop');
   // Fade effect stacks every slide's <img> in the exact same box, so the
   // browser's native loading="lazy" viewport heuristic treats all of them as
@@ -79,12 +78,6 @@ const HeroCarousel = ({ movies, showSearch = false }) => {
     contentClass = "absolute bottom-0 left-0 w-full px-4 pb-2 flex items-end h-full z-20";
   } else if (deviceMode === 'mobile-desktop') {
     contentClass = "absolute bottom-0 left-0 w-full px-6 pb-12 pt-10 z-20 flex items-end h-full";
-  }
-
-  // Determine title sizes dynamically
-  let titleClass = "text-4xl md:text-5xl lg:text-7xl font-black text-white mb-2 md:mb-4 tracking-tight drop-shadow-2xl";
-  if (deviceMode === 'mobile-desktop') {
-    titleClass = "text-3xl font-black text-white mb-2 tracking-tight drop-shadow-xl";
   }
 
   // Search bar top offset

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { useAuth, DEMO_ACCOUNTS } from '../hooks/useAuth';
 
@@ -130,8 +130,8 @@ const LoginPage = () => {
 
         <p className="mt-8 text-center text-xs text-gray-500 leading-relaxed px-2">
           By continuing you agree to our{' '}
-          <a href="#" className="text-brand hover:underline">Terms of Use</a> and acknowledge that you
-          have read our <a href="#" className="text-brand hover:underline">Privacy Policy</a>.
+          <Link to="/page/terms-and-conditions" className="text-brand hover:underline">Terms and Conditions</Link> and acknowledge that you
+          have read our <Link to="/page/privacy-policy" className="text-brand hover:underline">Privacy Policy</Link>.
         </p>
       </div>
     </div>

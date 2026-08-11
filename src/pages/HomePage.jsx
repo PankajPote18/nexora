@@ -28,7 +28,7 @@ const HomePage = () => {
   const [loading, setLoading] = useState(() => {
     try {
       return !localStorage.getItem('home_page_data_redesign');
-    } catch (e) {
+    } catch {
       return true;
     }
   });

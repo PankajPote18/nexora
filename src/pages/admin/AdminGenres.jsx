@@ -9,17 +9,6 @@ import {
   X,
   Upload
 } from 'lucide-react';
-// import { genresApi } from '../../services/api';
-
-// Temporary Mock Data based on the screenshot
-const initialGenres = [
-  { id: 1, name: 'crime', sort_order: 1, status: true, image: 'https://cdn-icons-png.flaticon.com/512/3233/3233483.png' },
-  { id: 2, name: 'tingletv', sort_order: 1, status: true, image: 'https://cdn-icons-png.flaticon.com/512/7514/7514050.png' },
-  { id: 3, name: 'Adventure', sort_order: 2, status: true, image: 'https://cdn-icons-png.flaticon.com/512/8150/8150428.png' },
-  { id: 4, name: 'Erotic', sort_order: 2, status: true, image: 'https://cdn-icons-png.flaticon.com/512/4607/4607596.png' },
-  { id: 5, name: 'Horror', sort_order: 3, status: true, image: 'https://cdn-icons-png.flaticon.com/512/3807/3807217.png' },
-  { id: 6, name: 'Romantic', sort_order: 4, status: true, image: 'https://cdn-icons-png.flaticon.com/512/864/864811.png' }
-];
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button

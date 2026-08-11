@@ -11,16 +11,44 @@ const { reconcileWithPayu } = require('./payuReconcile.service');
 
 const GRACE_MINUTES = parseInt(process.env.AUTOPAY_BILLING_GRACE_MINUTES, 10) || 0;
 
+// How long a pending UPI_AUTOPAY Payment blocks the same subscription from
+// being picked up again — must comfortably cover the pre-debit-notification
+// + si_transaction + PayU-verify round trip (well under a minute normally,
+// but RabbitMQ backlog or gateway latency can stretch that). Without this,
+// a subscription still "due" on the next cron tick (this runs every minute
+// by default) gets a second independent charge job enqueued against the
+// same live UPI mandate — a real duplicate-debit risk, not just a duplicate
+// row. If a charge attempt genuinely dies without ever reconciling, the
+// subscription becomes billable again after this window instead of being
+// permanently stuck.
+const IN_FLIGHT_COOLDOWN_MINUTES = parseInt(process.env.AUTOPAY_IN_FLIGHT_COOLDOWN_MINUTES, 10) || 15;
+
 // Subscriptions whose mandate is active and whose current billing period has
-// ended (or is about to, within the configured grace window).
+// ended (or is about to, within the configured grace window) — excluding any
+// subscription that already has a recent pending charge attempt in flight.
 async function getDueSubscriptions(now = new Date()) {
     const cutoff = new Date(now.getTime() + GRACE_MINUTES * 60000);
+    const inFlightCutoff = new Date(now.getTime() - IN_FLIGHT_COOLDOWN_MINUTES * 60000);
+
+    const inFlightPayments = await Payment.findAll({
+        where: {
+            payment_method: 'UPI_AUTOPAY',
+            status: 'pending',
+            createdAt: { [Op.gte]: inFlightCutoff }
+        },
+        attributes: ['subscription_id']
+    });
+    const inFlightSubscriptionIds = inFlightPayments
+        .map((p) => p.subscription_id)
+        .filter(Boolean);
+
     return Subscription.findAll({
         where: {
             autopay_enabled: true,
             mandate_status: 'active',
             status: 'active',
-            expires_at: { [Op.lte]: cutoff }
+            expires_at: { [Op.lte]: cutoff },
+            ...(inFlightSubscriptionIds.length ? { id: { [Op.notIn]: inFlightSubscriptionIds } } : {})
         }
     });
 }
@@ -33,7 +61,7 @@ async function getDueSubscriptions(now = new Date()) {
 // createPayment already uses for the one-time flow.
 async function createChargeAttempt(subscription) {
     const plan = await SubscriptionPlan.findByPk(subscription.plan_id);
-    const amount = plan ? Number(plan.discounted_price).toFixed(2) : '0.00';
+    const amount = plan ? Number(plan.original_price).toFixed(2) : '0.00';
     const txnid = payuUtil.generateTxnId();
 
     const payment = await Payment.create({

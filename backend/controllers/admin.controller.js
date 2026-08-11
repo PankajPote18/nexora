@@ -1,4 +1,4 @@
-const { User, Movie, SubscriptionPlan, SettingsPage } = require('../models');
+const { User, Movie, SubscriptionPlan } = require('../models');
 
 // Dashboard Analytics
 exports.getDashboardData = async (req, res) => {

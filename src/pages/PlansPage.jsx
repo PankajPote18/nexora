@@ -109,19 +109,12 @@ const PlansPage = () => {
     if (paymentPhase === 'success' && !registrationTracked.current) {
       registrationTracked.current = true;
       const plan = plans.find((p) => p.id === selectedPlan);
-      trackCompleteRegistration({ status: true, value: plan?.discounted_price, currency: 'INR', eventId: metaEventId });
+      trackCompleteRegistration({ status: true, value: plan?.original_price, currency: 'INR', eventId: metaEventId });
     }
     if (paymentPhase === 'idle') {
       registrationTracked.current = false;
     }
   }, [paymentPhase, plans, selectedPlan, metaEventId]);
-
-  // Compute discount percentage for display
-  const discountPercent = (plan) => {
-    if (!plan.original_price || plan.original_price === 0) return '0 %';
-    const pct = ((plan.original_price - plan.discounted_price) / plan.original_price) * 100;
-    return `${Math.round(pct)} %`;
-  };
 
   const handlePayNow = async () => {
     if (!selectedPlan) return;
@@ -227,23 +220,10 @@ const PlansPage = () => {
                       <span className="text-white font-bold text-base md:text-lg">{plan.name}</span>
                     </div>
 
-                    {/* Middle: Pricing */}
-                    <div className="flex items-center space-x-1 md:space-x-2 z-10 mr-12 md:mr-16">
-                      <span className="text-white font-bold text-base md:text-lg">
-                        ₹ {plan.discounted_price}
-                      </span>
-                      <span className="text-gray-500 line-through text-xs md:text-sm">
-                        ₹{plan.original_price}
-                      </span>
-                    </div>
-
-                    {/* Right: Discount Graphic */}
-                    <div className="absolute right-0 top-0 bottom-0 w-20 md:w-24 bg-[#7a8b86] rounded-l-[40px] flex flex-col items-center justify-center text-white">
-                      <span className="font-bold text-base md:text-lg leading-tight">
-                        {discountPercent(plan)}
-                      </span>
-                      <span className="text-xs uppercase font-semibold">Off</span>
-                    </div>
+                    {/* Right: Pricing */}
+                    <span className="text-white font-bold text-base md:text-lg z-10">
+                      ₹ {plan.original_price}
+                    </span>
                   </div>
                 </div>
               ))}

@@ -9,17 +9,6 @@ import {
   X
 } from 'lucide-react';
 
-// Temporary Mock Data based on the screenshot
-const initialCertificates = [
-  { id: 1, name: '19+', description: 'Above 18 years', sort_order: 1, status: true },
-  { id: 2, name: 'Testing', description: 'test', sort_order: 1, status: true },
-  { id: 3, name: '16+', description: 'Above 16 years', sort_order: 2, status: true },
-  { id: 4, name: 'U+', description: 'Above u', sort_order: 3, status: true },
-  { id: 5, name: 'U18+', description: 'AB DNBDFC C', sort_order: 4, status: true },
-  { id: 6, name: 'U18+', description: 'trfbgfvv', sort_order: 4, status: true },
-  { id: 7, name: 'U13+', description: 'Above age of 13', sort_order: 8, status: true },
-];
-
 const CustomToggle = ({ isOn, onToggle }) => (
   <button
     onClick={onToggle}

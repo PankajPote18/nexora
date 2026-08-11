@@ -9,17 +9,6 @@ import {
   X
 } from 'lucide-react';
 
-// Temporary Mock Data based on the screenshot
-const initialThemes = [
-  { id: 1, name: 'Alchol', sort_order: 1, status: false },
-  { id: 2, name: 'test-tingle', sort_order: 1, status: true },
-  { id: 3, name: 'Animal', sort_order: 2, status: true },
-  { id: 4, name: 'Cult', sort_order: 2, status: true },
-  { id: 5, name: 'Moral Ambiguity and Corruption', sort_order: 2, status: true },
-  { id: 6, name: 'Sexual', sort_order: 2, status: false },
-  { id: 7, name: 'Taboo', sort_order: 2, status: true },
-  { id: 8, name: 'Black Magic', sort_order: 3, status: true },
-];
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button

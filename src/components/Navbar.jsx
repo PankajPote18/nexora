@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 const Navbar = () => {
@@ -61,13 +61,8 @@ const Navbar = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate]);
 
-  // Hide mobile tabs on specific pages
-  const isSearchPage = location.pathname === '/search';
-  const isSettingsPage = location.pathname === '/settings';
-  const isPlansPage = location.pathname === '/plans';
   const isDetailPage = location.pathname.startsWith('/movie/');
   const isHomePage = location.pathname === '/';
-  const showMobileTabs = !isSearchPage && !isSettingsPage && !isPlansPage && !isDetailPage;
 
   return (
     <nav

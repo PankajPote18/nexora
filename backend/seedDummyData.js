@@ -26,8 +26,6 @@ const run = async () => {
         await Category.bulkCreate(categories);
         console.log('Categories seeded.');
 
-        const movies = [];
-        
         // Let's create ~25 movies
         const sampleMovies = [
             // Action

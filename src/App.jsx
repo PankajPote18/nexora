@@ -74,6 +74,23 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/verify-otp" element={<OtpPage />} />
 
+          {/* Legal/info pages (Terms and Conditions, Privacy Policy, etc.) —
+              deliberately public so the links on LoginPage work before a
+              session exists; everything else under /page/:slug still uses
+              the normal app shell. */}
+          <Route path="/page/:slug" element={
+            <div className="min-h-dvh bg-bg-dark flex flex-col md:pl-16 pb-16 md:pb-0 relative">
+              <Sidebar />
+              <Navbar />
+              <main className="flex-grow overflow-x-hidden w-full">
+                <Suspense fallback={<div className="min-h-[60vh]" />}>
+                  <SettingsDetailPage />
+                </Suspense>
+              </main>
+              <Footer />
+            </div>
+          } />
+
           {/* Admin Login - Standalone, required only for movie/trailer uploads */}
           <Route path="/admin/login" element={<AdminLogin />} />
 
@@ -114,7 +131,6 @@ function App() {
                       <Route path="/search" element={<SearchPage />} />
                       <Route path="/movie/:id" element={<DetailPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/page/:slug" element={<SettingsDetailPage />} />
                       <Route path="/plans" element={<PlansPage />} />
                     </Routes>
                   </Suspense>

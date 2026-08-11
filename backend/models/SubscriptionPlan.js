@@ -15,10 +15,6 @@ const SubscriptionPlan = sequelize.define('SubscriptionPlan', {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false
     },
-    discounted_price: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: false
-    },
     billing_cycle: {
         type: DataTypes.STRING,
         allowNull: false

@@ -30,7 +30,7 @@ exports.getSummary = async (req, res) => {
     try {
         const { fromDate, toDateExclusive, sequelizeRange } = parseDateRange(req.query);
 
-        const [totalVisitors, uniqueVisitors, newVisitors, conversions, bounces, durationResult] = await Promise.all([
+        const [totalSessions, uniqueVisitors, newVisitors, conversions, bounces, durationResult] = await Promise.all([
             Session.count({ where: { started_at: sequelizeRange } }),
             Session.count({ where: { started_at: sequelizeRange }, distinct: true, col: 'visitor_id' }),
             Visitor.count({ where: { first_visit_at: sequelizeRange } }),
@@ -44,16 +44,16 @@ exports.getSummary = async (req, res) => {
         ]);
 
         const returningVisitors = Math.max(0, uniqueVisitors - newVisitors);
-        const bounceRate = totalVisitors > 0 ? Number(((bounces / totalVisitors) * 100).toFixed(2)) : 0;
+        const bounceRate = totalSessions > 0 ? Number(((bounces / totalSessions) * 100).toFixed(2)) : 0;
         const avgSessionDuration = Math.round(Number(durationResult?.avgDuration) || 0);
 
         return res.json({
             range: { from: req.query.from || null, to: req.query.to || null, fromDate, toDateExclusive },
-            totalVisitors,
+            totalVisitors: uniqueVisitors,
             uniqueVisitors,
             newVisitors,
             returningVisitors,
-            sessions: totalVisitors,
+            sessions: totalSessions,
             avgSessionDuration,
             bounceRate,
             conversions

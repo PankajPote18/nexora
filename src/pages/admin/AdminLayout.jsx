@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
-  Menu, X, LayoutDashboard, Film, Users, LogOut,
-  FileText, CreditCard, Info, ChevronDown, ChevronRight, Settings,
+  Menu, X, Users, LogOut,
+  CreditCard, ChevronDown, ChevronRight, Settings,
   Layers, Monitor, Home
 } from 'lucide-react';
 

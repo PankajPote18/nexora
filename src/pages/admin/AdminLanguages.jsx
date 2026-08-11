@@ -6,16 +6,8 @@ import {
   Plus,
   Loader2,
   Check,
-  X,
-  Upload
+  X
 } from 'lucide-react';
-
-// Temporary Mock Data based on the screenshot
-const initialLanguages = [
-  { id: 1, name: 'English', code: 'Eng', sort_order: 1, status: true, image: 'https://cdn-icons-png.flaticon.com/512/197/197374.png' },
-  { id: 2, name: 'Hindi', code: 'Hi', sort_order: 2, status: true, image: 'https://cdn-icons-png.flaticon.com/512/197/197419.png' },
-  { id: 3, name: 'Marathi', code: 'Mar', sort_order: 3, status: true, image: 'https://cdn-icons-png.flaticon.com/512/197/197419.png' },
-];
 
 const CustomToggle = ({ isOn, onToggle }) => (
   <button

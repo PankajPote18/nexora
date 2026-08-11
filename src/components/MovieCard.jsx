@@ -193,8 +193,6 @@ const MovieCard = ({ movie, cardType = 'square', rank = 1 }) => {
   }
 
   // Layout 3: Standard Square (Square aspect-square)
-  const isNewMovie = movie.isNew || movie.id % 4 === 0;
-
   return (
     <Link
       to={`/movie/${movie.id}`}
