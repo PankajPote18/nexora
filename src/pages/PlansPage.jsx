@@ -1,30 +1,55 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { plansApi, paymentsApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
 
-// Polling cadence/timeout for checking payment status after the user is sent
-// to their UPI app — a browser redirect back isn't reliable for intent-based
-// mobile flows, so the backend-confirmed status is polled instead.
-const POLL_INTERVAL_MS = 4000;
-const MAX_POLLS = 45; // ~3 minutes
+const RAZORPAY_CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
+
+// Short fallback poll — only kicks in if the backend's own /verify call
+// (fired the instant Razorpay Checkout's in-browser `handler` confirms a
+// payment) somehow still reports 'pending' (e.g. a webhook/verify race).
+// Much shorter than the old UPI-intent flow's polling window ever needed to
+// be, since Checkout.js already means the charge attempt is complete from
+// the user's point of view by the time this could even run.
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLLS = 10; // ~30 seconds
+
+let checkoutScriptPromise = null;
+// Loads Razorpay's Checkout.js on demand (only once, cached) rather than
+// unconditionally on every /plans visit — most visits never click Pay Now.
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+  if (checkoutScriptPromise) return checkoutScriptPromise;
+  checkoutScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = RAZORPAY_CHECKOUT_SRC;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      checkoutScriptPromise = null;
+      reject(new Error('Failed to load the payment form. Please check your connection and try again.'));
+    };
+    document.body.appendChild(script);
+  });
+  return checkoutScriptPromise;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const PlansPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Payment flow state
-  const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | awaiting_upi | success | failed | cancelled | timeout | error
+  const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | checkout_open | confirming | success | failed | cancelled | timeout | error
   const [txnid, setTxnid] = useState(null);
   // Shared with the client-side Pixel's CompleteRegistration call so Meta
   // can dedupe it against the server-side Conversions API mirror sent from
-  // the backend once this payment succeeds — see metaCapi.util.js.
+  // the backend once this payment succeeds — see metaEvents.js.
   const [metaEventId, setMetaEventId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -56,54 +81,7 @@ const PlansPage = () => {
     if (sessionPhoneNumber) setCustomerPhone(sessionPhoneNumber.replace(/\D/g, '').slice(-10));
   }, [sessionPhoneNumber]);
 
-  // If we've just been redirected back from a PayU surl/furl callback, resume
-  // tracking that transaction. The txnid is just an identifier — the actual
-  // status is always re-verified against the backend, never read from the URL.
-  useEffect(() => {
-    const returnedTxnid = searchParams.get('txnid');
-    if (returnedTxnid) {
-      setTxnid(returnedTxnid);
-      setPaymentPhase('awaiting_upi');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Poll the backend for the authoritative payment status while a UPI
-  // transaction is in flight. Stops on a final status or after MAX_POLLS.
-  useEffect(() => {
-    if (paymentPhase !== 'awaiting_upi' || !txnid) return undefined;
-
-    let pollCount = 0;
-    const interval = setInterval(async () => {
-      pollCount += 1;
-      try {
-        const res = await paymentsApi.getStatus(txnid);
-        // Recovers the id when this tab resumed via ?txnid= (a fresh page
-        // load after PayU's redirect never calls createPayment, so state
-        // never had it) — captured on every poll tick, not just the final
-        // one, so it's available by the time paymentPhase flips to 'success'.
-        if (res.metaEventId) setMetaEventId(res.metaEventId);
-        if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
-          clearInterval(interval);
-          setPaymentPhase(res.status);
-          return;
-        }
-      } catch (err) {
-        console.error('Payment status poll failed:', err);
-      }
-      if (pollCount >= MAX_POLLS) {
-        clearInterval(interval);
-        setPaymentPhase('timeout');
-      }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [paymentPhase, txnid]);
-
-  // Fires exactly once per successful payment, regardless of which of the
-  // two call sites above (the poller, or handleCheckStatusNow below) is the
-  // one that actually flips paymentPhase to 'success'. Resets when the flow
-  // is reset back to 'idle' so a later retried/second payment can track again.
+  // Fires exactly once per successful payment.
   const registrationTracked = useRef(false);
   useEffect(() => {
     if (paymentPhase === 'success' && !registrationTracked.current) {
@@ -116,30 +94,117 @@ const PlansPage = () => {
     }
   }, [paymentPhase, plans, selectedPlan, metaEventId]);
 
+  // Short fallback poll for the rare case where /verify's own response still
+  // reports 'pending' right after Razorpay's handler fired.
+  const pollUntilResolved = async (txnid) => {
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await sleep(POLL_INTERVAL_MS);
+      try {
+        const res = await paymentsApi.getStatus(txnid);
+        if (res.metaEventId) setMetaEventId(res.metaEventId);
+        if (res.status === 'success' || res.status === 'failed' || res.status === 'cancelled') {
+          setPaymentPhase(res.status);
+          return;
+        }
+      } catch (err) {
+        console.error('Payment status poll failed:', err);
+      }
+    }
+    setPaymentPhase('timeout');
+  };
+
+  const handleCheckoutSuccess = async (txnid, razorpayResponse) => {
+    setPaymentPhase('confirming');
+    try {
+      const verifyBody = {
+        txnid,
+        razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+        razorpay_signature: razorpayResponse.razorpay_signature,
+      };
+      if (razorpayResponse.razorpay_subscription_id) {
+        verifyBody.razorpay_subscription_id = razorpayResponse.razorpay_subscription_id;
+      } else {
+        verifyBody.razorpay_order_id = razorpayResponse.razorpay_order_id;
+      }
+
+      const result = await paymentsApi.verify(verifyBody);
+      if (result.metaEventId) setMetaEventId(result.metaEventId);
+
+      if (result.status === 'success' || result.status === 'failed' || result.status === 'cancelled') {
+        setPaymentPhase(result.status);
+      } else {
+        await pollUntilResolved(txnid);
+      }
+    } catch (err) {
+      console.error('Payment verification failed:', err);
+      await pollUntilResolved(txnid);
+    }
+  };
+
   const handlePayNow = async () => {
     if (!selectedPlan) return;
 
     setErrorMsg('');
     setPaymentPhase('creating');
     try {
-      // No contact-detail form anymore — PayU still requires a name/email
+      await loadRazorpayCheckout();
+
+      // No contact-detail form — Razorpay Checkout still wants a name/email
       // per transaction, so a demo placeholder is derived from the session
       // phone number instead of asking the user to type them in.
+      const customerEmail = `user${customerPhone}@clickbuz-demo.local`;
       const res = await paymentsApi.create({
         plan_id: selectedPlan,
         customer_name: 'ClickBuz User',
-        customer_email: `user${customerPhone}@clickbuz-demo.local`,
+        customer_email: customerEmail,
         customer_phone: customerPhone.trim(),
         fbc: getStoredFbc(),
         fbp: getFbpCookie(),
         enable_autopay: enableAutopay,
       });
+
       setTxnid(res.txnid);
       setMetaEventId(res.metaEventId || null);
-      setPaymentPhase('awaiting_upi');
-      // Hands off to whichever UPI app is installed; this is a custom URI
-      // scheme so the page itself keeps running (polling continues below).
-      window.location.href = res.upiIntentUrl;
+
+      const options = {
+        key: res.razorpayKeyId,
+        name: 'ClickBuz',
+        description: 'ClickBuz Subscription',
+        // Both contact AND email need to be prefilled for Razorpay Checkout
+        // to skip/streamline its own Contact Details step — prefilling only
+        // one still leaves it prompting for the other.
+        prefill: { contact: customerPhone, email: customerEmail },
+        theme: { color: '#00A8E1' },
+        handler: (razorpayResponse) => handleCheckoutSuccess(res.txnid, razorpayResponse),
+        modal: {
+          // The only way we learn the user backed out of Checkout without
+          // paying — Razorpay itself reports this, no more guessing at a
+          // "cancelled" status the way the old gateway integration had to.
+          ondismiss: () => setPaymentPhase('cancelled'),
+        },
+      };
+
+      if (res.subscriptionId) {
+        options.subscription_id = res.subscriptionId;
+        options.recurring = true;
+      } else {
+        options.order_id = res.orderId;
+        options.amount = Math.round(Number(res.amount) * 100);
+        options.currency = 'INR';
+      }
+
+      const checkout = new window.Razorpay(options);
+      // Fires when a payment attempt inside the modal is declined (e.g. a
+      // failed card charge) — Checkout itself may keep the modal open for a
+      // retry with another method, so this only surfaces the error message;
+      // if the user then closes the modal, `modal.ondismiss` above still
+      // fires afterward and is treated as the more specific "cancelled".
+      checkout.on('payment.failed', (failure) => {
+        setErrorMsg(failure?.error?.description || 'Payment failed. Please try again.');
+        setPaymentPhase('failed');
+      });
+      setPaymentPhase('checkout_open');
+      checkout.open();
     } catch (err) {
       console.error('Payment creation failed:', err);
       setErrorMsg(err.message || 'Something went wrong while starting your payment. Please try again.');
@@ -147,8 +212,10 @@ const PlansPage = () => {
     }
   };
 
-  const handleCheckStatusNow = async () => {
-    if (!txnid) return;
+  // Lets the user resolve a 'timeout' state immediately instead of waiting
+  // for pollUntilResolved's next tick — same manual escape hatch the old
+  // polling-based flow had.
+  const handleCheckStatusNow = async (txnid) => {
     try {
       const res = await paymentsApi.getStatus(txnid);
       if (res.metaEventId) setMetaEventId(res.metaEventId);
@@ -254,7 +321,7 @@ const PlansPage = () => {
                   <>
                     <XCircle className="text-yellow-500" size={32} />
                     <p className="text-white font-bold">Payment cancelled</p>
-                    <p className="text-gray-400 text-sm">You cancelled the payment in your UPI app.</p>
+                    <p className="text-gray-400 text-sm">You closed the payment window before completing payment.</p>
                   </>
                 )}
                 {paymentPhase === 'timeout' && (
@@ -263,7 +330,7 @@ const PlansPage = () => {
                     <p className="text-white font-bold">Still confirming your payment</p>
                     <p className="text-gray-400 text-sm">This is taking longer than usual. Check back in a few minutes, or check now.</p>
                     <button
-                      onClick={handleCheckStatusNow}
+                      onClick={() => handleCheckStatusNow(txnid)}
                       data-testid="check-status-button"
                       className="mt-2 text-[#00A8E1] text-sm font-semibold hover:underline cursor-pointer"
                     >
@@ -289,33 +356,24 @@ const PlansPage = () => {
                   className="mt-0.5 w-4 h-4 accent-[#00A8E1] cursor-pointer"
                 />
                 <span className="text-sm">
-                  <span className="text-white font-semibold">Enable auto-renewal (UPI Autopay)</span>
+                  <span className="text-white font-semibold">Enable auto-renewal</span>
                   <span className="block text-gray-400 text-xs mt-0.5">
-                    Your plan will renew automatically via UPI Autopay when it expires — no need to pay manually each cycle. You can cancel anytime.
+                    Your plan will renew automatically when it expires — no need to pay manually each cycle. You can cancel anytime.
                   </span>
                 </span>
               </label>
             )}
 
             {/* Pay Now / status button */}
-            {paymentPhase === 'awaiting_upi' ? (
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  disabled
-                  data-testid="awaiting-upi-indicator"
-                  className="w-full py-4 bg-[#00A8E1]/60 text-white font-bold text-lg rounded-full shadow-lg flex items-center justify-center gap-2 cursor-not-allowed"
-                >
-                  <Loader2 className="animate-spin" size={20} />
-                  Waiting for UPI confirmation…
-                </button>
-                <button
-                  onClick={handleCheckStatusNow}
-                  data-testid="check-status-button"
-                  className="text-[#00A8E1] text-sm font-semibold hover:underline cursor-pointer"
-                >
-                  I've completed the payment — check status
-                </button>
-              </div>
+            {(paymentPhase === 'checkout_open' || paymentPhase === 'confirming') ? (
+              <button
+                disabled
+                data-testid="awaiting-confirmation-indicator"
+                className="w-full py-4 bg-[#00A8E1]/60 text-white font-bold text-lg rounded-full shadow-lg flex items-center justify-center gap-2 cursor-not-allowed"
+              >
+                <Loader2 className="animate-spin" size={20} />
+                {paymentPhase === 'checkout_open' ? 'Waiting for payment…' : 'Confirming payment…'}
+              </button>
             ) : (paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout' || paymentPhase === 'error') ? (
               <button
                 onClick={resetPaymentFlow}

@@ -18,8 +18,8 @@ dist-ssr
 /blob-report/
 /playwright/.cache/
 
-# Environment files contain live secrets (DB credentials, JWT secret, PayU
-# merchant key/salt, Bunny Storage keys) and must never be committed.
+# Environment files contain live secrets (DB credentials, JWT secret, Razorpay
+# key/secret, Bunny Storage keys) and must never be committed.
 .env
 .env.*
 backend/.env

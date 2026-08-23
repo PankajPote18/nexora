@@ -22,7 +22,11 @@ const app = express();
 app.use(compression({ level: 4 }));
 
 app.use(cors());
-app.use(express.json());
+// `verify` stashes the exact raw request bytes on req.rawBody, alongside the
+// normal parsed req.body — needed by routes/payment.routes.js's webhook
+// signature check, since Razorpay signs the literal bytes it sent and
+// JSON.stringify(req.body) is not guaranteed to reproduce them byte-for-byte.
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 // Access logging goes to a file, not the console, regardless of NODE_ENV —

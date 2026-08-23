@@ -22,8 +22,8 @@ const hashPhoneForCapi = (phone) => {
 
 // Sends a CompleteRegistration event to Meta's Conversions API. Never throws
 // — a failed/misconfigured CAPI send must not break the payment flow that
-// triggers it (reconcileWithPayu in payment.controller.js calls this
-// fire-and-forget). Returns { ok, status?, body? } for the caller to log.
+// triggers it (paymentReconcile.service.js calls this fire-and-forget).
+// Returns { ok, status?, body? } for the caller to log.
 const sendCompleteRegistrationEvent = async ({
     eventId,
     eventTime,

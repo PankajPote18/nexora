@@ -23,12 +23,12 @@ const Payment = sequelize.define('Payment', {
         type: DataTypes.BIGINT.UNSIGNED,
         allowNull: true
     },
-    // Set only on recurring UPI Autopay charge attempts (payment_method
-    // 'UPI_AUTOPAY') — links back to the Subscription being billed. The
-    // original one-time/registration payment leaves this null; it's instead
-    // pointed to via subscriptions.last_payment_id. See
-    // backend/services/autopayBilling.service.js and migration
-    // 20260808140000-add-subscription-id-to-payments.js.
+    // Set only on recurring Razorpay Subscription charges (payment_method
+    // 'RAZORPAY_AUTOPAY', created from the `subscription.charged` webhook —
+    // see paymentReconcile.service.js) — links back to the Subscription
+    // being billed. The original one-time/registration payment leaves this
+    // null; it's instead pointed to via subscriptions.last_payment_id. See
+    // migration 20260808140000-add-subscription-id-to-payments.js.
     subscription_id: {
         type: DataTypes.BIGINT.UNSIGNED,
         allowNull: true
@@ -49,33 +49,42 @@ const Payment = sequelize.define('Payment', {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false
     },
+    // 'RAZORPAY' (one-time order) | 'RAZORPAY_AUTOPAY' (recurring Subscription
+    // charge, see the subscription_id comment below) — Razorpay's own
+    // payment.method (card/upi/netbanking/...) is captured separately, in
+    // razorpay_method below, once the charge actually completes.
     payment_method: {
         type: DataTypes.STRING,
         allowNull: false,
-        defaultValue: 'UPI'
+        defaultValue: 'RAZORPAY'
     },
     status: {
         type: DataTypes.STRING,
         allowNull: false,
         defaultValue: 'pending' // pending | success | failed | cancelled
     },
-    payu_mihpayid: {
+    razorpay_order_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    payu_reference_id: {
+    razorpay_payment_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    payu_bank_ref_num: {
+    razorpay_signature: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    payu_mode: {
+    // Razorpay's own payment.method (card/upi/netbanking/wallet/emandate...).
+    razorpay_method: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    payu_response: {
+    razorpay_bank_ref: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    razorpay_response: {
         type: DataTypes.TEXT('long'),
         allowNull: true
     },
@@ -88,9 +97,10 @@ const Payment = sequelize.define('Payment', {
         allowNull: true
     },
     // Meta Conversions API (CAPI) support — captured from the browser at
-    // checkout time (POST /api/payments/create) since reconcileWithPayu()
-    // has no request context when a payment later becomes 'success' (see
-    // migration 20260808120000-add-meta-capi-columns-to-payments.js).
+    // checkout time (POST /api/payments/create) since applyPaymentResult()
+    // (paymentReconcile.service.js) has no request context when a payment
+    // later becomes 'success' (see migration
+    // 20260808120000-add-meta-capi-columns-to-payments.js).
     fbc: {
         type: DataTypes.STRING,
         allowNull: true

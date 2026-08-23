@@ -1,28 +1,32 @@
 const crypto = require('crypto');
 const { Payment, Subscription, SubscriptionPlan } = require('../models');
-const {
-    generateTxnId,
-    buildRequestHash,
-    buildSiDetails,
-    verifyResponseHash,
-    initiateUpiIntentPayment
-} = require('../utils/payu.util');
+const razorpayUtil = require('../utils/razorpay.util');
 const { getClientIp } = require('../utils/analytics/ipHash.util');
-const { FINAL_STATUSES, VERIFY_THROTTLE_MS, reconcileWithPayu } = require('../services/payuReconcile.service');
+const {
+    FINAL_STATUSES,
+    VERIFY_THROTTLE_MS,
+    reconcileOrderPayment,
+    reconcilePendingPayment,
+    reconcileSubscriptionAuth,
+    handleSubscriptionCharged,
+    handleSubscriptionStatusChange
+} = require('../services/paymentReconcile.service');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
 
-// A UPI Autopay mandate needs its own validity window (how long the mandate
-// itself can be charged against), separate from the Subscription's own
-// expires_at (which drives *when* the next charge is due). A long window
-// avoids re-registering the mandate every billing cycle — this app's own
-// autopay billing cron (services/autopayBilling.service.js) is what actually
-// decides when to charge within that window.
-const MANDATE_VALIDITY_YEARS = 3;
-const toPayuDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
+// Generates our own app-level transaction id, independent of Razorpay's own
+// order/payment ids — used as this app's stable external reference (URL
+// params, polling, the Razorpay order's `receipt` field).
+const generateTxnId = () => {
+    const ts = Date.now().toString(36);
+    const rand = crypto.randomBytes(5).toString('hex');
+    return `NX${ts}${rand}`.toUpperCase();
+};
 
-// Creates a Payment record and initiates a PayU UPI Intent S2S transaction.
+// Creates a Payment record and either a Razorpay Order (one-time purchase)
+// or a Razorpay Subscription (enable_autopay) for the frontend to open via
+// Checkout.js.
 exports.createPayment = async (req, res) => {
     try {
         const { plan_id, customer_name, customer_email, customer_phone, fbc, fbp, enable_autopay } = req.body;
@@ -42,28 +46,30 @@ exports.createPayment = async (req, res) => {
             return res.status(404).json({ message: 'Subscription plan not found or inactive' });
         }
 
-        const key = process.env.PAYU_MERCHANT_KEY;
-        const salt = process.env.PAYU_SALT;
-        if (!key || !salt) {
-            console.error('PayU credentials are not configured (PAYU_MERCHANT_KEY / PAYU_SALT missing)');
+        const key = process.env.RAZORPAY_KEY_ID;
+        const secret = process.env.RAZORPAY_KEY_SECRET;
+        if (!key || !secret) {
+            console.error('Razorpay credentials are not configured (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET missing)');
             return res.status(500).json({ message: 'Payment gateway is not configured' });
         }
 
         const txnid = generateTxnId();
         const amount = Number(plan.original_price).toFixed(2);
-        const productinfo = `ClickBuz ${plan.name} Subscription`;
-        const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+
+        // Razorpay itself rejects an order below this — checked here too so
+        // a misconfigured plan price fails with a clear 400 instead of a
+        // confusing 502 from deeper inside the Razorpay call.
+        if (razorpayUtil.toPaise(amount) < razorpayUtil.MIN_AMOUNT_PAISE) {
+            return res.status(400).json({ message: `Plan amount is below Razorpay's minimum chargeable amount (₹${(razorpayUtil.MIN_AMOUNT_PAISE / 100).toFixed(2)})` });
+        }
 
         // Shared with the client-side Meta Pixel's CompleteRegistration call
         // (once payment succeeds) so Meta can dedupe the two events — see
-        // trackCompleteRegistration in src/analytics/metaEvents.js. Generated
-        // now because this is the only point with real browser context
-        // (fbc/fbp/ip/ua); reconcileWithPayu (where 'success' is written)
-        // can be reached from PayU's S2S webhook, which has none of that.
+        // trackCompleteRegistration in src/analytics/metaEvents.js.
         const metaEventId = crypto.randomUUID();
 
-        // Create the pending record first so we have an audit trail even if the
-        // call to PayU below fails outright.
+        // Create the pending record first so we have an audit trail even if
+        // the call to Razorpay below fails outright.
         const payment = await Payment.create({
             txnid,
             plan_id: plan.id,
@@ -71,7 +77,7 @@ exports.createPayment = async (req, res) => {
             customer_email,
             customer_phone,
             amount,
-            payment_method: 'UPI',
+            payment_method: 'RAZORPAY',
             status: 'pending',
             fbc: typeof fbc === 'string' ? fbc.slice(0, 255) : null,
             fbp: typeof fbp === 'string' ? fbp.slice(0, 255) : null,
@@ -80,94 +86,71 @@ exports.createPayment = async (req, res) => {
             meta_event_id: metaEventId
         });
 
-        // UPI Autopay mandate registration piggybacks on this same initiate
-        // call — si_details describes the recurring billing terms PayU asks
-        // the customer to consent to alongside this first payment. See
-        // buildSiDetails/buildRequestHash in payu.util.js for the exact
-        // field names/hash formula (confirmed against PayU's own docs).
-        const siDetails = enable_autopay
-            ? buildSiDetails({
-                billingAmount: amount,
-                billingCycle: 'MONTHLY',
-                billingInterval: 1,
-                paymentStartDate: toPayuDate(new Date()),
-                paymentEndDate: toPayuDate(new Date(Date.now() + MANDATE_VALIDITY_YEARS * 365 * 86400000))
-            })
-            : null;
+        if (enable_autopay) {
+            try {
+                // A Razorpay Plan is reusable across every subscriber of this
+                // SubscriptionPlan — created once and cached, since Razorpay
+                // has no "get or create" endpoint of its own.
+                let razorpayPlanId = plan.razorpay_plan_id;
+                if (!razorpayPlanId) {
+                    const razorpayPlan = await razorpayUtil.createPlan({ amount, name: `ClickBuz ${plan.name}` });
+                    razorpayPlanId = razorpayPlan.id;
+                    await plan.update({ razorpay_plan_id: razorpayPlanId });
+                }
 
-        // si_details does NOT affect this hash (see buildRequestHash's
-        // comment) — only the separate si_details POST param below.
-        const hash = buildRequestHash({ key, txnid, amount, productinfo, firstname: customer_name, email: customer_email, salt });
+                const subscription = await razorpayUtil.createSubscription({
+                    planId: razorpayPlanId,
+                    notes: { customer_phone, plan_id: String(plan.id) }
+                });
 
-        const payuParams = {
-            key,
-            txnid,
-            amount,
-            productinfo,
-            firstname: customer_name,
-            lastname: '',
-            email: customer_email,
-            phone: customer_phone,
-            zipcode: '',
-            pg: 'UPI',
-            bankcode: 'INTENT',
-            txn_s2s_flow: '4',
-            s2s_client_ip: (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-            s2s_device_info: (req.headers['user-agent'] || '').toString(),
-            surl: `${backendUrl}/api/payments/callback/success`,
-            furl: `${backendUrl}/api/payments/callback/failure`,
-            hash
-        };
-        if (siDetails) {
-            payuParams.si = '1';
-            payuParams.si_details = JSON.stringify(siDetails);
+                await Subscription.create({
+                    customer_phone,
+                    customer_email,
+                    plan_id: plan.id,
+                    status: 'active',
+                    expires_at: new Date(Date.now() + plan.number_of_days * 86400000),
+                    autopay_enabled: true,
+                    mandate_status: 'created',
+                    razorpay_subscription_id: subscription.id,
+                    last_payment_id: payment.id
+                });
+
+                console.log(`Subscription created: txnid=${txnid}, plan=${plan.id}, razorpaySubscriptionId=${subscription.id}`);
+
+                return res.status(201).json({
+                    paymentId: payment.id,
+                    txnid,
+                    amount,
+                    razorpayKeyId: key,
+                    subscriptionId: subscription.id,
+                    status: 'pending',
+                    metaEventId
+                });
+            } catch (err) {
+                console.error(`Razorpay subscription creation failed for txnid=${txnid}:`, err.message);
+                await payment.update({ status: 'failed', error_message: `Razorpay subscription creation failed: ${err.message}` });
+                // 401 from Razorpay means the configured key/secret itself is
+                // invalid — surface that distinctly rather than a blanket 502.
+                if (err.statusCode === 401) {
+                    return res.status(401).json({ message: 'Razorpay authentication failed — check RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET' });
+                }
+                return res.status(502).json({ message: 'Failed to start subscription with Razorpay' });
+            }
         }
 
-        let payuData;
+        let order;
         try {
-            payuData = await initiateUpiIntentPayment(payuParams);
+            order = await razorpayUtil.createOrder({ amount, receipt: txnid, notes: { plan_id: String(plan.id), customer_phone } });
         } catch (err) {
-            console.error(`PayU initiate call failed for txnid=${txnid}:`, err.message);
-            await payment.update({ status: 'failed', error_message: `PayU initiate call failed: ${err.message}` });
-            return res.status(502).json({ message: 'Failed to initiate payment with PayU' });
+            console.error(`Razorpay order creation failed for txnid=${txnid}:`, err.message);
+            await payment.update({ status: 'failed', error_message: `Razorpay order creation failed: ${err.message}` });
+            if (err.statusCode === 401) {
+                return res.status(401).json({ message: 'Razorpay authentication failed — check RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET' });
+            }
+            return res.status(502).json({ message: 'Failed to initiate payment with Razorpay' });
         }
 
-        const intentUriData = payuData?.result?.intentURIData;
-        if (!intentUriData) {
-            console.error(`PayU initiate response missing intentURIData for txnid=${txnid}:`, JSON.stringify(payuData));
-            await payment.update({
-                status: 'failed',
-                error_message: 'PayU did not return UPI intent data',
-                payu_response: JSON.stringify(payuData)
-            });
-            return res.status(502).json({ message: 'PayU did not return UPI intent data' });
-        }
-
-        await payment.update({
-            payu_reference_id: payuData?.metaData?.referenceId || null,
-            payu_mihpayid: payuData?.metaData?.txnId || payuData?.result?.paymentId || null,
-            payu_response: JSON.stringify(payuData)
-        });
-
-        // Create the Subscription row now (mandate_status:'pending') so it
-        // exists for the frontend to reference and for reconcileWithPayu to
-        // find and confirm once this payment's status is verified — don't
-        // wait for that reconciliation to create it. See
-        // payuReconcile.service.js's pendingMandateSub lookup.
-        if (siDetails) {
-            await Subscription.create({
-                customer_phone,
-                customer_email,
-                plan_id: plan.id,
-                status: 'active',
-                expires_at: new Date(Date.now() + plan.number_of_days * 86400000),
-                autopay_enabled: true,
-                mandate_status: 'pending',
-                last_payment_id: payment.id
-            });
-        }
-
-        const upiIntentUrl = `upi://pay?${intentUriData}`;
+        await payment.update({ razorpay_order_id: order.id });
 
         console.log(`Payment created: txnid=${txnid}, plan=${plan.id}, amount=${amount}`);
 
@@ -175,7 +158,8 @@ exports.createPayment = async (req, res) => {
             paymentId: payment.id,
             txnid,
             amount,
-            upiIntentUrl,
+            razorpayKeyId: key,
+            orderId: order.id,
             status: 'pending',
             metaEventId
         });
@@ -185,12 +169,66 @@ exports.createPayment = async (req, res) => {
     }
 };
 
-// Re-checks a payment's status against PayU (throttled) and returns the
-// backend-confirmed status. Never trusts anything other than the DB / PayU.
+// Called by the frontend right after Razorpay Checkout's client-side
+// `handler` callback fires. Verifies the HMAC signature Razorpay signs that
+// callback with, then re-confirms the payment directly against Razorpay's
+// API before writing a final status — the signature alone proves the
+// callback wasn't tampered with in transit, not that the charge actually
+// captured, so this never trusts it as the final word on its own.
+exports.verifyPayment = async (req, res) => {
+    try {
+        const { txnid, razorpay_payment_id, razorpay_order_id, razorpay_subscription_id, razorpay_signature } = req.body;
+
+        if (!txnid || !razorpay_payment_id || !razorpay_signature || (!razorpay_order_id && !razorpay_subscription_id)) {
+            return res.status(400).json({ message: 'Missing required verification fields' });
+        }
+
+        const payment = await Payment.findOne({ where: { txnid } });
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+
+        let signatureValid;
+        if (razorpay_subscription_id) {
+            signatureValid = razorpayUtil.verifySubscriptionSignature({
+                subscriptionId: razorpay_subscription_id,
+                paymentId: razorpay_payment_id,
+                signature: razorpay_signature
+            });
+        } else {
+            signatureValid = razorpayUtil.verifyPaymentSignature({
+                orderId: razorpay_order_id,
+                paymentId: razorpay_payment_id,
+                signature: razorpay_signature
+            });
+        }
+
+        if (!signatureValid) {
+            console.warn(`Razorpay signature verification failed for txnid=${txnid}`);
+            return res.status(400).json({ message: 'Payment signature verification failed' });
+        }
+
+        const reconciled = razorpay_subscription_id
+            ? await reconcileSubscriptionAuth(txnid, razorpay_subscription_id, razorpay_payment_id)
+            : await reconcileOrderPayment(txnid, razorpay_payment_id);
+
+        if (!reconciled) {
+            return res.status(500).json({ message: 'Server error verifying payment' });
+        }
+
+        return res.json({ txnid, status: reconciled.status, metaEventId: reconciled.meta_event_id });
+    } catch (err) {
+        console.error('Error verifying payment:', err);
+        return res.status(500).json({ message: 'Server error verifying payment' });
+    }
+};
+
+// Re-checks a payment's status against Razorpay (throttled) and returns the
+// backend-confirmed status. Never trusts anything other than the DB / Razorpay.
 exports.getPaymentStatus = async (req, res) => {
     try {
         const { txnid } = req.params;
-        const payment = await Payment.findOne({ where: { txnid } });
+        let payment = await Payment.findOne({ where: { txnid } });
         if (!payment) {
             return res.status(404).json({ message: 'Payment not found' });
         }
@@ -198,8 +236,8 @@ exports.getPaymentStatus = async (req, res) => {
         if (!FINAL_STATUSES.includes(payment.status)) {
             const lastVerified = payment.last_verified_at ? new Date(payment.last_verified_at).getTime() : 0;
             if (Date.now() - lastVerified > VERIFY_THROTTLE_MS) {
-                await reconcileWithPayu(payment.txnid);
-                await payment.reload();
+                const reconciled = await reconcilePendingPayment(payment);
+                if (reconciled) payment = reconciled;
             }
         }
 
@@ -210,10 +248,9 @@ exports.getPaymentStatus = async (req, res) => {
             planId: payment.plan_id,
             paymentMethod: payment.payment_method,
             updatedAt: payment.updated_at,
-            // Lets the frontend recover the id for a payment resumed via
-            // ?txnid= on a fresh page load (no createPayment call in that
-            // tab), so its Pixel CompleteRegistration call can still dedupe
-            // against the server-side CAPI mirror sent below.
+            // Lets the frontend recover the id for a payment resumed on a
+            // fresh page load, so its Pixel CompleteRegistration call can
+            // still dedupe against the server-side CAPI mirror sent below.
             metaEventId: payment.meta_event_id
         });
     } catch (err) {
@@ -222,60 +259,48 @@ exports.getPaymentStatus = async (req, res) => {
     }
 };
 
-// PayU redirects here (surl) after the user completes the UPI flow.
-exports.handleSuccessCallback = async (req, res) => {
-    try {
-        await processCallback(req.body);
-    } catch (err) {
-        console.error('Error processing PayU success callback:', err);
-    }
-    return redirectToFrontend(res, req.body?.txnid);
-};
-
-// PayU redirects here (furl) after a failed/declined UPI flow.
-exports.handleFailureCallback = async (req, res) => {
-    try {
-        await processCallback(req.body);
-    } catch (err) {
-        console.error('Error processing PayU failure callback:', err);
-    }
-    return redirectToFrontend(res, req.body?.txnid);
-};
-
-// Dashboard-configured webhook — server-to-server only, no browser involved.
+// Razorpay's dashboard-configured webhook — server-to-server only, no
+// browser involved. Every branch here is reached only after the raw-body
+// HMAC signature is verified in routes/payment.routes.js's middleware.
 exports.handleWebhook = async (req, res) => {
     try {
-        await processCallback(req.body);
+        const event = req.body?.event;
+        const payload = req.body?.payload;
+
+        switch (event) {
+            case 'payment.captured':
+            case 'payment.failed': {
+                const paymentEntity = payload?.payment?.entity;
+                const orderId = paymentEntity?.order_id;
+                if (orderId) {
+                    const payment = await Payment.findOne({ where: { razorpay_order_id: orderId } });
+                    if (payment) {
+                        await reconcileOrderPayment(payment.txnid, paymentEntity.id);
+                    }
+                }
+                break;
+            }
+            case 'subscription.charged': {
+                await handleSubscriptionCharged({
+                    subscriptionEntity: payload?.subscription?.entity,
+                    paymentEntity: payload?.payment?.entity
+                });
+                break;
+            }
+            case 'subscription.completed':
+            case 'subscription.halted':
+            case 'subscription.cancelled': {
+                await handleSubscriptionStatusChange(payload?.subscription?.entity);
+                break;
+            }
+            default:
+                console.log(`Unhandled Razorpay webhook event: ${event}`);
+        }
+
         return res.status(200).json({ status: 'ok' });
     } catch (err) {
-        console.error('Error processing PayU webhook:', err);
-        // Non-2xx so PayU's retry mechanism can recover from transient failures
+        console.error('Error processing Razorpay webhook:', err);
+        // Non-2xx so Razorpay's retry mechanism can recover from transient failures
         return res.status(500).json({ status: 'error' });
     }
 };
-
-function redirectToFrontend(res, txnid) {
-    const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
-    const target = `${frontendUrl}/plans${txnid ? `?txnid=${encodeURIComponent(txnid)}` : ''}`;
-    return res.redirect(302, target);
-}
-
-// Shared idempotent handler for surl/furl/webhook payloads. Verifies the
-// payload's hash for tamper-detection/logging, but the actual status written
-// to the DB always comes from an authoritative call to PayU's Verify Payment
-// API — never from the posted `status` field alone (per requirement to never
-// trust a single unverified signal).
-async function processCallback(payload) {
-    const txnid = payload?.txnid;
-    if (!txnid) {
-        console.warn('PayU callback received without a txnid, ignoring:', JSON.stringify(payload));
-        return;
-    }
-
-    const hashValid = verifyResponseHash(payload);
-    if (!hashValid) {
-        console.warn(`PayU callback hash mismatch for txnid=${txnid} — proceeding to verify directly with PayU instead of trusting this payload`);
-    }
-
-    await reconcileWithPayu(txnid);
-}

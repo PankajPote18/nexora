@@ -1,7 +1,7 @@
 // Minimal, dependency-free CSV writer — this project avoids adding a library
 // (json2csv, csv-stringify, etc.) for something this small; every other
-// export-shaped feature in the codebase (e.g. the payu response snapshot)
-// also just hand-rolls its own serialization.
+// export-shaped feature in the codebase (e.g. the Razorpay response
+// snapshot) also just hand-rolls its own serialization.
 
 function escapeCsvValue(value) {
     if (value === null || value === undefined) return '';

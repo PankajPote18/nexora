@@ -1,12 +1,15 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db.config');
 
-// Tracks a customer's active plan and (optionally) their PayU UPI Autopay
-// mandate for auto-renewal — see CLAUDE.md §9/§22 and the autopay billing
-// pipeline in backend/jobs|queues|workers/autopayBilling.* +
-// services/autopayBilling.service.js. No real backend user auth exists for
-// the consumer flow (§8), so identity here is customer_phone/email, matching
-// the Payment model's existing convention — not a foreign key to `users`.
+// Tracks a customer's active plan and (optionally) their Razorpay
+// Subscription for auto-renewal — see CLAUDE.md §9. Razorpay's own
+// Subscriptions product schedules and executes recurring charges itself;
+// this app just reacts to its webhooks (subscription.charged/.completed/
+// .halted/.cancelled — see backend/services/paymentReconcile.service.js and
+// backend/controllers/payment.controller.js's handleWebhook). No real
+// backend user auth exists for the consumer flow (§8), so identity here is
+// customer_phone/email, matching the Payment model's existing convention —
+// not a foreign key to `users`.
 const Subscription = sequelize.define('Subscription', {
     id: {
         type: DataTypes.BIGINT.UNSIGNED,
@@ -39,16 +42,19 @@ const Subscription = sequelize.define('Subscription', {
         allowNull: false,
         defaultValue: false
     },
-    // The registration payment's payu_mihpayid — PayU's si_transaction API
-    // calls this "authpayuid" and requires it for every subsequent recurring
-    // charge (see payu.util.js's triggerRecurringCharge).
-    payu_mandate_ref: {
+    // Razorpay's own Subscription id — the handle every recurring-billing
+    // webhook (subscription.charged/.completed/.halted/.cancelled) and any
+    // future cancel-subscription call is keyed on.
+    razorpay_subscription_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
+    // Mirrors Razorpay's own subscription status: created | authenticated |
+    // active | pending | halted | cancelled | completed | expired | failed —
+    // kept in sync by paymentReconcile.service.js's webhook handlers.
     mandate_status: {
         type: DataTypes.STRING,
-        allowNull: true // pending | active | failed | cancelled
+        allowNull: true
     },
     last_billed_at: {
         type: DataTypes.DATE,

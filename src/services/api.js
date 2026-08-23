@@ -144,15 +144,15 @@ export const settingsPagesApi = {
   remove: (id) => del(`/settings-pages/${id}`),
 };
 
-// ── Payments (PayU UPI Intent S2S) ─────────────────────────────────────────
+// ── Payments (Razorpay Orders/Subscriptions + Checkout.js) ─────────────────
 // Uses its own error handling (vs. the shared post/get helpers above) so the
 // backend's validation message (e.g. "Invalid email address") reaches the UI
 // instead of a generic "API error 400". Still timeout-bounded via
 // fetchWithTimeout, but deliberately never auto-retried — see the note on
-// RETRYABLE_STATUS above; a payment create/status call retrying itself
-// silently is the wrong tradeoff for anything money-related. PlansPage.jsx
-// already polls getStatus on its own schedule, which is the intended retry
-// mechanism for this specific flow.
+// RETRYABLE_STATUS above; a payment create/verify/status call retrying
+// itself silently is the wrong tradeoff for anything money-related.
+// PlansPage.jsx's own polling fallback is the intended retry mechanism for
+// this specific flow.
 const paymentRequest = async (path, options) => {
   const res = await fetchWithTimeout(`${BASE}${path}`, options);
   const data = await res.json().catch(() => ({}));
@@ -165,6 +165,15 @@ const paymentRequest = async (path, options) => {
 export const paymentsApi = {
   create: (data) =>
     paymentRequest('/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  // Called right after Razorpay Checkout's client-side `handler` callback
+  // fires, with whichever ids/signature it handed back (order flow vs.
+  // subscription flow — see PlansPage.jsx).
+  verify: (data) =>
+    paymentRequest('/payments/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

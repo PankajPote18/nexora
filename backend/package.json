@@ -9,8 +9,7 @@
     "migrate": "sequelize-cli db:migrate",
     "migrate:undo": "sequelize-cli db:migrate:undo",
     "migrate:status": "sequelize-cli db:migrate:status",
-    "geo:update": "node scripts/downloadGeoDb.js",
-    "autopay:test-expiry": "node scripts/testAutopayExpiry.js"
+    "geo:update": "node scripts/downloadGeoDb.js"
   },
   "keywords": [],
   "author": "",

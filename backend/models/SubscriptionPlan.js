@@ -34,6 +34,15 @@ const SubscriptionPlan = sequelize.define('SubscriptionPlan', {
     is_recommended: {
         type: DataTypes.BOOLEAN,
         defaultValue: false
+    },
+    // Razorpay Plan id backing this SubscriptionPlan's recurring/autopay
+    // option — created lazily on first use (see payment.controller.js's
+    // createPayment) and cached here since Razorpay has no "get or create"
+    // endpoint of its own; null until a customer first opts into autopay
+    // for this plan.
+    razorpay_plan_id: {
+        type: DataTypes.STRING,
+        allowNull: true
     }
 }, {
     tableName: 'subscription_plans',

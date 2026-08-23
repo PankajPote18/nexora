@@ -52,9 +52,9 @@ if (cluster.isPrimary) {
     console.log(`Primary ${process.pid} starting ${numWorkers} worker(s)...`);
 
     // The primary never serves HTTP (see the isPrimary/else split below) —
-    // it only does the one-time sync/seed below and, afterwards, the autopay
-    // billing cron's periodic queries (see the comment further down on why
-    // its connection now stays open). Without an explicit DB_POOL_MAX here,
+    // it only does the one-time sync/seed below and, afterwards, the
+    // analytics rollup cron's nightly query (see the comment further down on
+    // why its connection now stays open). Without an explicit DB_POOL_MAX here,
     // db.config.js's own default (30 — the same number the *entire* worker
     // fleet's budget is supposed to sum to, see TOTAL_DB_POOL_BUDGET above)
     // would apply to the primary's pool too, silently making the real
@@ -165,29 +165,6 @@ if (cluster.isPrimary) {
                 console.error('[reminder] failed to start reminder pipeline (non-fatal):', err.message);
             }
 
-            // Autopay billing pipeline (RabbitMQ + cron, PayU UPI Autopay
-            // recurring debits — see backend/jobs|queues|workers/
-            // autopayBilling.* + services/autopayBilling.service.js). Same
-            // primary-only reasoning as the reminder pipeline above. Unlike
-            // that in-memory demo feature, this one is DB-backed and drives
-            // real payment attempts — there's no boot-time test seed here;
-            // test data comes from a real checkout plus
-            // scripts/testAutopayExpiry.js compressing a real subscription's
-            // expires_at.
-            let stopAutopayBillingCronFn = null;
-            try {
-                const { startAutopayBillingCron, stopAutopayBillingCron } = require('./jobs/autopayBilling.cron');
-                const { startAutopayBillingWorker } = require('./workers/autopayBilling.worker');
-
-                startAutopayBillingCron();
-                stopAutopayBillingCronFn = stopAutopayBillingCron;
-                startAutopayBillingWorker().catch((err) => {
-                    console.error('[autopay] worker failed to start (non-fatal):', err.message);
-                });
-            } catch (err) {
-                console.error('[autopay] failed to start autopay billing pipeline (non-fatal):', err.message);
-            }
-
             // Analytics nightly rollup (see CLAUDE.md §23) — same reasoning
             // as the reminder cron above: must run exactly once, not once
             // per worker, so it lives in the primary only. The per-request
@@ -203,13 +180,16 @@ if (cluster.isPrimary) {
             }
 
             // The primary itself never serves HTTP traffic, but — unlike the
-            // in-memory reminder pipeline — the autopay billing cron above
-            // runs real DB queries (getDueSubscriptions/reconcileWithPayu)
-            // from this same primary process on every tick for the lifetime
-            // of the process, so its Sequelize connection can no longer be
-            // closed here. (Previously this closed unconditionally, since
-            // nothing in the primary touched the DB after boot — that's no
-            // longer true.)
+            // in-memory reminder pipeline — the analytics rollup cron above
+            // runs a real DB query from this same primary process once a
+            // night for the lifetime of the process, so its Sequelize
+            // connection can no longer be closed here. (Previously this
+            // closed unconditionally, since nothing in the primary touched
+            // the DB after boot — that's no longer true.) Recurring payment
+            // billing itself no longer runs any cron of its own — Razorpay's
+            // own Subscriptions product schedules and executes recurring
+            // charges, delivered back to this app only via the
+            // /api/payments/webhook route each worker already serves.
 
             const workers = new Set();
             const forkWorker = () => {
@@ -248,20 +228,6 @@ if (cluster.isPrimary) {
             // the listen port instead of exiting with their parent.
             const shutdown = () => {
                 shuttingDown = true;
-                // Stop the autopay billing cron from enqueueing any new
-                // recurring-charge job during shutdown — this pipeline moves
-                // real money against a real payment gateway, a materially
-                // worse failure mode than the reminder pipeline's log-only
-                // work if killed mid-flight, so (unlike that pipeline) it
-                // gets an explicit stop here rather than just dying with the
-                // process.
-                if (stopAutopayBillingCronFn) {
-                    try {
-                        stopAutopayBillingCronFn();
-                    } catch (err) {
-                        console.error('[autopay] error stopping billing cron during shutdown:', err.message);
-                    }
-                }
                 for (const worker of workers) {
                     worker.kill();
                 }

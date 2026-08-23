@@ -36,8 +36,9 @@ SubscriptionPlan.hasMany(Payment, { foreignKey: 'plan_id' });
 Payment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(Payment, { foreignKey: 'user_id' });
 
-// Autopay billing (see CLAUDE.md §9/§22, backend/services/autopayBilling.service.js)
-// — soft references only, same convention as the associations above.
+// Razorpay Subscriptions billing (see CLAUDE.md §9, backend/services/
+// paymentReconcile.service.js) — soft references only, same convention as
+// the associations above.
 Subscription.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
 Subscription.belongsTo(Payment, { foreignKey: 'last_payment_id', as: 'lastPayment' });
 Payment.belongsTo(Subscription, { foreignKey: 'subscription_id', as: 'subscription' });

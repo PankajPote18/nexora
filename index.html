@@ -11,7 +11,13 @@
          render.yaml) and the actual frontend host is unclear (see
          CLAUDE.md §2/§15). Covers every real origin this app loads from:
          self, Bunny CDN images/movies/trailers/subtitles, Meta Pixel + GA4/GTM
-         (analytics, §23/§24), this build's own backend API (VITE_API_URL,
+         (analytics, §23/§24), Razorpay Checkout.js (§9 — checkout.razorpay.com
+         for the script itself, cdn.razorpay.com for a risk-detection bundle
+         checkout.js loads directly into this document (confirmed via a live
+         CSP violation, not speculative), api.razorpay.com/lumberjack.razorpay.com
+         for the requests it makes once open, and both checkout.razorpay.com and
+         api.razorpay.com as frame-src since Checkout embeds iframes from
+         both for card/OTP entry), this build's own backend API (VITE_API_URL,
          replaced at build time the same way the preconnect tag below already
          does), and the Unsplash/Picsum fallback images used in onError
          handlers (§12). media-src is explicit (not left to the default-src
@@ -37,7 +43,7 @@
          file/Express middleware, depending on the host chosen) — flag this
          to the user rather than guessing at a host that may not match
          reality. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://clickbuz-media.b-cdn.net https://www.facebook.com https://images.unsplash.com https://picsum.photos; media-src 'self' https://clickbuz-media.b-cdn.net; font-src 'self' data:; connect-src 'self' %VITE_API_URL% https://www.facebook.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://signals.birch.click https://ca-e378c80be3e6414fbf602b3d9bdb79e5.ecs.us-east-2.on.aws; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com https://checkout.razorpay.com https://cdn.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://clickbuz-media.b-cdn.net https://www.facebook.com https://images.unsplash.com https://picsum.photos https://*.razorpay.com; media-src 'self' https://clickbuz-media.b-cdn.net; font-src 'self' data:; connect-src 'self' %VITE_API_URL% https://www.facebook.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://signals.birch.click https://ca-e378c80be3e6414fbf602b3d9bdb79e5.ecs.us-east-2.on.aws https://api.razorpay.com https://lumberjack.razorpay.com; frame-src https://www.googletagmanager.com https://checkout.razorpay.com https://api.razorpay.com; object-src 'none'; base-uri 'self';" />
     <!-- Warm up the connection to the API host before the app's first fetch
          fires, so DNS/TLS negotiation isn't on the critical path. -->
     <link rel="preconnect" href="%VITE_API_URL%" crossorigin />
