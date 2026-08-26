@@ -21,7 +21,26 @@ const app = express();
 // server.js).
 app.use(compression({ level: 4 }));
 
-app.use(cors());
+// Restrict cross-origin requests to this app's own frontend(s) — previously
+// wide open (bare cors()), which let any origin call this API directly from
+// a browser. FRONTEND_URL is the real production domain (see backend/.env);
+// localhost origins are also allowed so local frontend dev against this
+// backend keeps working regardless of NODE_ENV.
+const allowedOrigins = [
+    (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+].filter(Boolean);
+app.use(cors({
+    origin: (origin, callback) => {
+        // No Origin header (server-to-server calls, curl, Razorpay webhooks)
+        // isn't a browser CORS request at all — always allow it through.
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+    }
+}));
 // `verify` stashes the exact raw request bytes on req.rawBody, alongside the
 // normal parsed req.body — needed by routes/payment.routes.js's webhook
 // signature check, since Razorpay signs the literal bytes it sent and

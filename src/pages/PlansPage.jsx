@@ -53,7 +53,6 @@ const PlansPage = () => {
   const [metaEventId, setMetaEventId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [enableAutopay, setEnableAutopay] = useState(false);
 
   useEffect(() => {
     // Fetch only active plans from backend
@@ -160,7 +159,6 @@ const PlansPage = () => {
         customer_phone: customerPhone.trim(),
         fbc: getStoredFbc(),
         fbp: getFbpCookie(),
-        enable_autopay: enableAutopay,
       });
 
       setTxnid(res.txnid);
@@ -343,25 +341,6 @@ const PlansPage = () => {
 
             {errorMsg && (
               <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
-            )}
-
-            {/* Autopay opt-in — only shown before a payment attempt starts */}
-            {(paymentPhase === 'idle' || paymentPhase === 'error') && (
-              <label className="flex items-start gap-3 mb-6 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={enableAutopay}
-                  onChange={(e) => setEnableAutopay(e.target.checked)}
-                  data-testid="enable-autopay-checkbox"
-                  className="mt-0.5 w-4 h-4 accent-[#00A8E1] cursor-pointer"
-                />
-                <span className="text-sm">
-                  <span className="text-white font-semibold">Enable auto-renewal</span>
-                  <span className="block text-gray-400 text-xs mt-0.5">
-                    Your plan will renew automatically when it expires — no need to pay manually each cycle. You can cancel anytime.
-                  </span>
-                </span>
-              </label>
             )}
 
             {/* Pay Now / status button */}
