@@ -23,10 +23,16 @@ app.use(compression({ level: 4 }));
 
 // Restrict cross-origin requests to this app's own frontend(s) — previously
 // wide open (bare cors()), which let any origin call this API directly from
-// a browser. FRONTEND_URL is the real production domain (see backend/.env);
-// localhost origins are also allowed so local frontend dev against this
-// backend keeps working regardless of NODE_ENV.
+// a browser. clickbuz.in/www.clickbuz.in are hardcoded (not read solely from
+// FRONTEND_URL) since an unset/mismatched env var on Render previously took
+// the entire production site down with CORS-blocked 500s the moment this
+// restriction shipped — FRONTEND_URL is still included so it keeps working
+// if the domain ever changes, but the real domain no longer depends on it
+// being configured correctly. Localhost origins are also allowed so local
+// frontend dev against this backend keeps working regardless of NODE_ENV.
 const allowedOrigins = [
+    'https://clickbuz.in',
+    'https://www.clickbuz.in',
     (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
     'http://localhost:5173',
     'http://127.0.0.1:5173'
