@@ -1,29 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
-import { Loader2, ChevronDown } from 'lucide-react';
-import { useAuth, DEMO_ACCOUNTS } from '../hooks/useAuth';
+import { Loader2 } from 'lucide-react';
+import { useAuth, setDemoSession } from '../hooks/useAuth';
 
-// Small curated list, not a full ISO 3166 dump — keeps the selector usable
-// on a phone screen. Defaults to +91 per product requirement.
-const COUNTRY_CODES = [
-  { code: '+91', label: 'IN +91' },
-  { code: '+1', label: 'US +1' },
-  { code: '+44', label: 'UK +44' },
-  { code: '+971', label: 'UAE +971' },
-  { code: '+65', label: 'SG +65' },
-  { code: '+61', label: 'AU +61' },
-];
+// India-only — any 10-digit number is accepted, no leading-digit restriction.
+const COUNTRY_CODE = '+91';
 
-const isValidPhone = (countryCode, digits) => {
-  if (countryCode === '+91') return /^[6-9]\d{9}$/.test(digits);
-  return /^\d{7,15}$/.test(digits);
-};
+const isValidPhone = (digits) => /^\d{10}$/.test(digits);
 
 const LoginPage = () => {
-  const [countryCode, setCountryCode] = useState('+91');
   const [phoneDigits, setPhoneDigits] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -31,28 +18,23 @@ const LoginPage = () => {
     return <Navigate to="/" replace />;
   }
 
-  const valid = isValidPhone(countryCode, phoneDigits);
+  const valid = isValidPhone(phoneDigits);
 
   const handleContinue = async (e) => {
     e.preventDefault();
     if (!valid || loading) return;
 
-    setError('');
     setLoading(true);
-    const fullPhoneNumber = `${countryCode}${phoneDigits}`;
+    const fullPhoneNumber = `${COUNTRY_CODE}${phoneDigits}`;
 
-    // Brief artificial delay to keep the existing "Sending OTP…" UX intact.
+    // Brief artificial delay to keep the existing "Signing in…" UX intact.
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const account = DEMO_ACCOUNTS.find((a) => a.phone === fullPhoneNumber);
-    if (!account) {
-      setError('This is a demo build — sign in with 9999999999, 8888888888, or 7777777777.');
-      setLoading(false);
-      return;
-    }
-
+    // Any number that passes the format check above logs in — no OTP step,
+    // no fixed account list. Straight to the subscription page.
+    setDemoSession(fullPhoneNumber);
     setLoading(false);
-    navigate('/verify-otp', { state: { phoneNumber: fullPhoneNumber } });
+    navigate('/plans');
   };
 
   return (
@@ -71,41 +53,21 @@ const LoginPage = () => {
 
         <form onSubmit={handleContinue} className="space-y-5">
           <div>
-            <div
-              className={`flex items-center bg-bg-lighter border rounded-xl overflow-hidden transition-colors ${
-                error ? 'border-red-500' : 'border-gray-700 focus-within:border-brand'
-              }`}
-            >
-              <div className="relative flex items-center border-r border-gray-700">
-                <select
-                  value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
-                  className="appearance-none bg-transparent text-white text-sm font-medium pl-4 pr-8 py-3.5 outline-none cursor-pointer"
-                  aria-label="Country code"
-                >
-                  {COUNTRY_CODES.map(({ code, label }) => (
-                    <option key={code} value={code} className="bg-bg-lighter">
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-gray-500" />
-              </div>
+            <div className="flex items-center bg-bg-lighter border border-gray-700 focus-within:border-brand rounded-xl overflow-hidden transition-colors">
+              <span className="px-4 py-3.5 text-white text-sm font-medium border-r border-gray-700 whitespace-nowrap shrink-0">
+                IN {COUNTRY_CODE}
+              </span>
               <input
                 type="tel"
                 inputMode="numeric"
                 placeholder="Mobile number"
                 className="w-full bg-transparent text-white px-4 py-3.5 outline-none placeholder-gray-500 tracking-wide"
                 value={phoneDigits}
-                onChange={(e) => {
-                  setError('');
-                  setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 15));
-                }}
-                maxLength={15}
+                onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                maxLength={10}
                 autoFocus
               />
             </div>
-            {error && <p className="mt-2 text-xs text-red-400 auth-card-enter">{error}</p>}
           </div>
 
           <button
@@ -120,7 +82,7 @@ const LoginPage = () => {
             {loading ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                Sending OTP…
+                Signing in…
               </>
             ) : (
               'Continue'

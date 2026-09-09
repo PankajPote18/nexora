@@ -2,14 +2,11 @@ import { useState } from 'react';
 
 const STORAGE_KEY = 'clickbuz_demo_session';
 
-// Demo-only accounts (see LoginPage.jsx / OtpPage.jsx) — no backend call, no
-// real auth. `type` drives a bit of post-login demo behavior:
-//   - 'default'       — normal home page after login.
-//   - 'explore_plans' — lands on /plans (Explore Plans) right after login.
-//   - 'premium'        — DetailPage's paywall is skipped, "premium" content
-//                        plays directly (see DetailPage.jsx's isPremium use).
-// This is a frontend-only convenience for demoing different states, not a
-// real role/permission system.
+// Legacy fixed demo accounts. No longer used by the live login flow
+// (LoginPage.jsx now accepts any valid phone number and skips OTP
+// verification entirely — see setDemoSession below) — kept here only so the
+// still-present, no-longer-linked OtpPage.jsx keeps working/compiling if
+// ever navigated to directly with router state.
 export const DEMO_ACCOUNTS = [
   { phone: '+919999999999', otp: '1234', type: 'default' },
   { phone: '+918888888888', otp: '4567', type: 'explore_plans' },
@@ -25,9 +22,10 @@ const readSession = () => {
   }
 };
 
-// Demo-only auth: a small fixed set of hardcoded accounts (see DEMO_ACCOUNTS
-// above) — no backend call, no real session, just a localStorage flag set
-// after OTP verification succeeds.
+// No backend call, no real session — just a localStorage flag. Any phone
+// number that passes LoginPage's format check is accepted; `type` only
+// resolves to something other than 'default' if the number happens to match
+// one of the legacy DEMO_ACCOUNTS above (kept for OtpPage.jsx, see there).
 export const setDemoSession = (phoneNumber) => {
   const account = DEMO_ACCOUNTS.find((a) => a.phone === phoneNumber);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ phoneNumber, type: account?.type ?? 'default' }));
