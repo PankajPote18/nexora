@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { plansApi, paymentsApi } from '../services/api';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, markPaid } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
 
@@ -93,6 +93,16 @@ const PlansPage = () => {
     }
   }, [paymentPhase, plans, selectedPlan, metaEventId]);
 
+  // Successful payment is the only thing that unlocks the rest of the app
+  // (see ProtectedRoute.jsx) — mark the session paid, then hand off to the
+  // home page after a beat so the "Payment successful" card is still seen.
+  useEffect(() => {
+    if (paymentPhase !== 'success') return undefined;
+    markPaid();
+    const timer = setTimeout(() => navigate('/', { replace: true }), 1500);
+    return () => clearTimeout(timer);
+  }, [paymentPhase, navigate]);
+
   // Short fallback poll for the rare case where /verify's own response still
   // reports 'pending' right after Razorpay's handler fired.
   const pollUntilResolved = async (txnid) => {
@@ -159,6 +169,13 @@ const PlansPage = () => {
         customer_phone: customerPhone.trim(),
         fbc: getStoredFbc(),
         fbp: getFbpCookie(),
+        // Every plan (weekly/monthly/annual) bills via a Razorpay Subscription
+        // rather than a one-time order, so it auto-renews on that plan's own
+        // cadence — see BILLING_CYCLE_TO_RAZORPAY in payment.controller.js.
+        // The resulting UPI Autopay mandate can always be cancelled by the
+        // customer directly from their UPI app/bank at any time — that's a
+        // property of UPI Autopay itself, not something this app gates.
+        enable_autopay: true,
       });
 
       setTxnid(res.txnid);
@@ -293,6 +310,10 @@ const PlansPage = () => {
                 </div>
               ))}
             </div>
+
+            <p className="text-gray-500 text-xs text-center -mt-4 mb-6 leading-relaxed">
+              Renews automatically via UPI Autopay on your plan's cycle. You can cancel the mandate anytime from your UPI app.
+            </p>
 
             {/* Payment status card — success/failed/cancelled/timeout */}
             {(paymentPhase === 'success' || paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (

@@ -15,6 +15,17 @@ const {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
 
+// Razorpay Plan `period` per this app's SubscriptionPlan.billing_cycle
+// values, plus a total_count tuned to ~10 years of that cadence — matches
+// createSubscription's own "no fixed end" reasoning, but per-period instead
+// of one flat 120 (120 *weekly* cycles is only ~2.3 years, not 10).
+const BILLING_CYCLE_TO_RAZORPAY = {
+    DAILY: { period: 'daily', totalCount: 3650 },
+    WEEKLY: { period: 'weekly', totalCount: 520 },
+    MONTHLY: { period: 'monthly', totalCount: 120 },
+    YEARLY: { period: 'yearly', totalCount: 10 }
+};
+
 // Generates our own app-level transaction id, independent of Razorpay's own
 // order/payment ids — used as this app's stable external reference (URL
 // params, polling, the Razorpay order's `receipt` field).
@@ -88,18 +99,23 @@ exports.createPayment = async (req, res) => {
 
         if (enable_autopay) {
             try {
+                // Recurring cadence follows the plan's own billing_cycle
+                // (weekly/monthly/yearly) rather than always billing monthly.
+                const razorpayCycle = BILLING_CYCLE_TO_RAZORPAY[plan.billing_cycle] || BILLING_CYCLE_TO_RAZORPAY.MONTHLY;
+
                 // A Razorpay Plan is reusable across every subscriber of this
                 // SubscriptionPlan — created once and cached, since Razorpay
                 // has no "get or create" endpoint of its own.
                 let razorpayPlanId = plan.razorpay_plan_id;
                 if (!razorpayPlanId) {
-                    const razorpayPlan = await razorpayUtil.createPlan({ amount, name: `ClickBuz ${plan.name}` });
+                    const razorpayPlan = await razorpayUtil.createPlan({ amount, name: `ClickBuz ${plan.name}`, period: razorpayCycle.period });
                     razorpayPlanId = razorpayPlan.id;
                     await plan.update({ razorpay_plan_id: razorpayPlanId });
                 }
 
                 const subscription = await razorpayUtil.createSubscription({
                     planId: razorpayPlanId,
+                    totalCount: razorpayCycle.totalCount,
                     notes: { customer_phone, plan_id: String(plan.id) }
                 });
 

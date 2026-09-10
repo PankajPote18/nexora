@@ -18,15 +18,14 @@ const DetailPage = () => {
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const { showModal } = usePremiumModal();
-  const { isPremium } = useAuth();
+  const { hasPaid } = useAuth();
 
   const handleWatchClick = (e) => {
-    // This page is only reachable while authenticated (see ProtectedRoute in
-    // App.jsx). There's still no real subscription check — this is just the
-    // 'premium' demo account (see DEMO_ACCOUNTS in useAuth.js) bypassing the
-    // paywall for demo purposes. Every other account stays fail-closed.
-    const hasActiveSubscription = isPremium;
-    if (!hasActiveSubscription) {
+    // This page is only reachable while authenticated AND paid (see
+    // ProtectedRoute in App.jsx — an unpaid session never gets past /plans
+    // in the first place). This check stays as a second layer for a session
+    // that was paid, then had its subscription cancelled/expired elsewhere.
+    if (!hasPaid) {
       e.preventDefault();
       showModal();
       return;

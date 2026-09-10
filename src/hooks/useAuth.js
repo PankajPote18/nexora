@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 const STORAGE_KEY = 'clickbuz_demo_session';
 
 // Legacy fixed demo accounts. No longer used by the live login flow
@@ -35,13 +33,28 @@ export const clearDemoSession = () => {
   localStorage.removeItem(STORAGE_KEY);
 };
 
+// Flags the current session as paid — set once the Explore Plans checkout
+// succeeds (see PlansPage.jsx). Gates access to the rest of the app via
+// ProtectedRoute.jsx: a logged-in but unpaid session is confined to /plans.
+export const markPaid = () => {
+  const session = readSession();
+  if (!session) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...session, paid: true }));
+};
+
+// Reads fresh from localStorage on every call (no memoized state) so that a
+// same-tab write like markPaid()/clearDemoSession() is picked up on the very
+// next render — e.g. PlansPage calling markPaid() then navigating, without
+// ProtectedRoute (which stays mounted across that navigation) holding onto a
+// stale snapshot.
 export const useAuth = () => {
-  const [session] = useState(readSession);
+  const session = readSession();
 
   return {
     phoneNumber: session?.phoneNumber ?? null,
     isAuthenticated: Boolean(session),
     accountType: session?.type ?? null,
     isPremium: session?.type === 'premium',
+    hasPaid: Boolean(session?.paid),
   };
 };
