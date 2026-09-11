@@ -179,4 +179,8 @@ export const paymentsApi = {
       body: JSON.stringify(data),
     }),
   getStatus: (txnid) => paymentRequest(`/payments/status/${txnid}`),
+  // Checked at login (see LoginPage.jsx) so a returning customer with an
+  // already-active subscription skips /plans entirely instead of being
+  // asked to pay again every time they log back in.
+  getSubscriptionStatus: (phone) => paymentRequest(`/payments/subscription-status/${phone}`),
 };

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { useAuth, setDemoSession } from '../hooks/useAuth';
+import { useAuth, setDemoSession, markPaid } from '../hooks/useAuth';
+import { paymentsApi } from '../services/api';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
 const COUNTRY_CODE = '+91';
@@ -27,12 +28,29 @@ const LoginPage = () => {
     setLoading(true);
     const fullPhoneNumber = `${COUNTRY_CODE}${phoneDigits}`;
 
-    // Brief artificial delay to keep the existing "Signing in…" UX intact.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
     // Any number that passes the format check above logs in — no OTP step,
-    // no fixed account list. Straight to the subscription page.
+    // no fixed account list.
     setDemoSession(fullPhoneNumber);
+
+    // A returning customer who already has an active (paid, unexpired)
+    // subscription for this phone number shouldn't be asked to pay again on
+    // every login — see backend/controllers/payment.controller.js's
+    // getSubscriptionStatus and CLAUDE.md's Payment/Subscription models.
+    // This is a real DB lookup, not the localStorage-only demo flag alone.
+    try {
+      const result = await paymentsApi.getSubscriptionStatus(phoneDigits);
+      if (result.active) {
+        markPaid();
+        setLoading(false);
+        navigate('/');
+        return;
+      }
+    } catch (err) {
+      console.error('Subscription status check failed:', err);
+      // Fail safe to the paywall rather than silently granting access if the
+      // check itself errors out.
+    }
+
     setLoading(false);
     navigate('/plans');
   };

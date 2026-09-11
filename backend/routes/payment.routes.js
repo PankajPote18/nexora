@@ -6,6 +6,7 @@ const razorpayUtil = require('../utils/razorpay.util');
 router.post('/create', paymentController.createPayment);
 router.post('/verify', paymentController.verifyPayment);
 router.get('/status/:txnid', paymentController.getPaymentStatus);
+router.get('/subscription-status/:phone', paymentController.getSubscriptionStatus);
 
 // Razorpay calls this directly (server-to-server) — not a user-facing route.
 // Verifies X-Razorpay-Signature against the raw request bytes (see

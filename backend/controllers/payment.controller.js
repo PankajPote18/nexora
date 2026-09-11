@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const { Payment, Subscription, SubscriptionPlan } = require('../models');
 const razorpayUtil = require('../utils/razorpay.util');
 const { getClientIp } = require('../utils/analytics/ipHash.util');
@@ -15,15 +16,22 @@ const {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
 
-// Razorpay Plan `period` per this app's SubscriptionPlan.billing_cycle
+// Razorpay Plan `period`/`interval` per this app's SubscriptionPlan.billing_cycle
 // values, plus a total_count tuned to ~10 years of that cadence — matches
 // createSubscription's own "no fixed end" reasoning, but per-period instead
 // of one flat 120 (120 *weekly* cycles is only ~2.3 years, not 10).
+//
+// DAILY is a special case: Razorpay's Subscriptions API rejects period:
+// 'daily' with interval 1 — "Interval provided is less than the minimum
+// interval (7) allowed for the given period (daily)". Razorpay simply has no
+// true day-to-day recurring cycle; 7 is its own enforced floor, so a DAILY
+// plan's autopay actually recurs every 7 days (same cadence as WEEKLY) —
+// it's still a distinct SKU/price point, just not literally daily billing.
 const BILLING_CYCLE_TO_RAZORPAY = {
-    DAILY: { period: 'daily', totalCount: 3650 },
-    WEEKLY: { period: 'weekly', totalCount: 520 },
-    MONTHLY: { period: 'monthly', totalCount: 120 },
-    YEARLY: { period: 'yearly', totalCount: 10 }
+    DAILY: { period: 'daily', interval: 7, totalCount: 520 },
+    WEEKLY: { period: 'weekly', interval: 1, totalCount: 520 },
+    MONTHLY: { period: 'monthly', interval: 1, totalCount: 120 },
+    YEARLY: { period: 'yearly', interval: 1, totalCount: 10 }
 };
 
 // Generates our own app-level transaction id, independent of Razorpay's own
@@ -108,7 +116,7 @@ exports.createPayment = async (req, res) => {
                 // has no "get or create" endpoint of its own.
                 let razorpayPlanId = plan.razorpay_plan_id;
                 if (!razorpayPlanId) {
-                    const razorpayPlan = await razorpayUtil.createPlan({ amount, name: `ClickBuz ${plan.name}`, period: razorpayCycle.period });
+                    const razorpayPlan = await razorpayUtil.createPlan({ amount, name: `ClickBuz ${plan.name}`, period: razorpayCycle.period, interval: razorpayCycle.interval });
                     razorpayPlanId = razorpayPlan.id;
                     await plan.update({ razorpay_plan_id: razorpayPlanId });
                 }
@@ -272,6 +280,46 @@ exports.getPaymentStatus = async (req, res) => {
     } catch (err) {
         console.error('Error fetching payment status:', err);
         return res.status(500).json({ message: 'Server error fetching payment status' });
+    }
+};
+
+// Lets the frontend recognize a returning customer at login time (see
+// LoginPage.jsx) without any real backend session — consumer auth is still
+// just a phone-number demo (§8), so this is keyed on customer_phone alone,
+// same convention as Payment/Subscription themselves. Looks for a
+// Subscription whose mandate actually completed its first charge
+// (mandate_status: 'active' — 'created'/'failed' mean checkout was never
+// finished) and hasn't lapsed yet (expires_at in the future).
+exports.getSubscriptionStatus = async (req, res) => {
+    try {
+        const { phone } = req.params;
+        if (!PHONE_RE.test(phone)) {
+            return res.status(400).json({ message: 'Invalid phone number' });
+        }
+
+        const subscription = await Subscription.findOne({
+            where: {
+                customer_phone: phone,
+                mandate_status: 'active',
+                expires_at: { [Op.gt]: new Date() }
+            },
+            order: [['expires_at', 'DESC']]
+        });
+
+        if (!subscription) {
+            return res.json({ active: false });
+        }
+
+        const plan = await SubscriptionPlan.findByPk(subscription.plan_id);
+        return res.json({
+            active: true,
+            planId: subscription.plan_id,
+            planName: plan ? plan.name : null,
+            expiresAt: subscription.expires_at
+        });
+    } catch (err) {
+        console.error('Error checking subscription status:', err);
+        return res.status(500).json({ message: 'Error checking subscription status' });
     }
 };
 
