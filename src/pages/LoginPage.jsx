@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth, setDemoSession, markPaid } from '../hooks/useAuth';
-import { paymentsApi } from '../services/api';
+import { plansApi, paymentsApi } from '../services/api';
+import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
 const COUNTRY_CODE = '+91';
@@ -15,13 +16,24 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
+  // Best-effort preload, fired the instant this screen mounts: most people
+  // who land here are about to pay, so by the time "Proceed to Pay" is
+  // actually tapped, Razorpay's Checkout.js is very likely already loaded —
+  // removing that network round trip from the critical path to the modal
+  // opening. handlePayNow's own loadRazorpayCheckout() call (in
+  // PlansPage.jsx) still runs and will retry/surface a real error if this
+  // preload failed or hasn't finished yet.
+  useEffect(() => {
+    loadRazorpayCheckout().catch(() => {});
+  }, []);
+
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
   const valid = isValidPhone(phoneDigits);
 
-  const handleContinue = async (e) => {
+  const handleProceedToPay = async (e) => {
     e.preventDefault();
     if (!valid || loading) return;
 
@@ -37,22 +49,41 @@ const LoginPage = () => {
     // every login — see backend/controllers/payment.controller.js's
     // getSubscriptionStatus and CLAUDE.md's Payment/Subscription models.
     // This is a real DB lookup, not the localStorage-only demo flag alone.
-    try {
-      const result = await paymentsApi.getSubscriptionStatus(phoneDigits);
-      if (result.active) {
-        markPaid();
-        setLoading(false);
-        navigate('/');
-        return;
-      }
-    } catch (err) {
-      console.error('Subscription status check failed:', err);
-      // Fail safe to the paywall rather than silently granting access if the
-      // check itself errors out.
+    //
+    // Fetched in parallel with that check (not after it) — most logins are
+    // NOT already-subscribed, so this plan list is needed almost every
+    // time; fetching it only after learning that saves nothing and just
+    // adds a second sequential round trip PlansPage.jsx would otherwise
+    // have to make itself before Razorpay can open.
+    const [statusResult, plansResult] = await Promise.allSettled([
+      paymentsApi.getSubscriptionStatus(phoneDigits),
+      plansApi.getAll(true),
+    ]);
+
+    if (statusResult.status === 'fulfilled' && statusResult.value.active) {
+      markPaid();
+      setLoading(false);
+      navigate('/');
+      return;
+    }
+    if (statusResult.status === 'rejected') {
+      console.error('Subscription status check failed:', statusResult.reason);
+      // Fail safe to the paywall rather than silently granting access if
+      // the check itself errored out.
     }
 
     setLoading(false);
-    navigate('/plans');
+    // autoPay tells PlansPage.jsx to skip manual plan selection and go
+    // straight to Razorpay Checkout for the Monthly plan — the rest of that
+    // page's payment flow (verify, success -> redirect home, failure -> stay
+    // put) is unchanged. Handing over the already-fetched plans (when that
+    // succeeded) lets it skip re-fetching them itself.
+    navigate('/plans', {
+      state: {
+        autoPay: true,
+        plans: plansResult.status === 'fulfilled' ? plansResult.value : undefined,
+      },
+    });
   };
 
   return (
@@ -69,7 +100,7 @@ const LoginPage = () => {
           Enter your mobile number to sign in or create an account.
         </p>
 
-        <form onSubmit={handleContinue} className="space-y-5">
+        <form onSubmit={handleProceedToPay} className="space-y-5">
           <div>
             <div className="flex items-center bg-bg-lighter border border-gray-700 focus-within:border-brand rounded-xl overflow-hidden transition-colors">
               <span className="px-4 py-3.5 text-white text-sm font-medium border-r border-gray-700 whitespace-nowrap shrink-0">
@@ -100,10 +131,10 @@ const LoginPage = () => {
             {loading ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                Signing in…
+                Please wait…
               </>
             ) : (
-              'Continue'
+              'Proceed to Pay'
             )}
           </button>
         </form>

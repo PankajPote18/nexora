@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { plansApi, paymentsApi } from '../services/api';
 import { useAuth, markPaid } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
-
-const RAZORPAY_CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
+import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
 // (fired the instant Razorpay Checkout's in-browser `handler` confirms a
@@ -17,32 +16,23 @@ const RAZORPAY_CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 10; // ~30 seconds
 
-let checkoutScriptPromise = null;
-// Loads Razorpay's Checkout.js on demand (only once, cached) rather than
-// unconditionally on every /plans visit — most visits never click Pay Now.
-function loadRazorpayCheckout() {
-  if (window.Razorpay) return Promise.resolve();
-  if (checkoutScriptPromise) return checkoutScriptPromise;
-  checkoutScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = RAZORPAY_CHECKOUT_SRC;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      checkoutScriptPromise = null;
-      reject(new Error('Failed to load the payment form. Please check your connection and try again.'));
-    };
-    document.body.appendChild(script);
-  });
-  return checkoutScriptPromise;
-}
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const PlansPage = () => {
   const navigate = useNavigate();
-  const [plans, setPlans] = useState([]);
+  const location = useLocation();
+  // Set by LoginPage.jsx's "Proceed to Pay" button — skips manual plan
+  // selection and opens Razorpay Checkout directly for the Monthly plan.
+  const autoPay = Boolean(location.state?.autoPay);
+  // LoginPage.jsx prefetches the plan list in parallel with its
+  // subscription-status check and hands it over here via navigation state,
+  // so this page can skip its own /api/subscription-plans round trip
+  // entirely on the autoPay path — one less network wait between "Proceed
+  // to Pay" and Razorpay actually opening.
+  const prefetchedPlans = location.state?.plans;
+  const [plans, setPlans] = useState(prefetchedPlans || []);
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!prefetchedPlans);
 
   // Payment flow state
   const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | checkout_open | confirming | success | failed | cancelled | timeout | error
@@ -54,18 +44,35 @@ const PlansPage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
+  // autoPay (from LoginPage.jsx's "Proceed to Pay") always pays for the
+  // Monthly plan specifically, regardless of which plan is marked
+  // is_recommended; otherwise pre-select the recommended plan, or fall
+  // back to the first active plan.
+  const selectPlan = (data) => {
+    const monthly = data.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
+    const recommended = data.find((p) => p.is_recommended);
+    setSelectedPlan((autoPay ? monthly?.id : null) ?? recommended?.id ?? data[0]?.id ?? null);
+  };
+
   useEffect(() => {
-    // Fetch only active plans from backend
+    if (prefetchedPlans && prefetchedPlans.length > 0) {
+      selectPlan(prefetchedPlans);
+      return;
+    }
+    // No usable prefetch (direct /plans visit, or LoginPage's own prefetch
+    // failed) — fetch it ourselves, same as always.
     plansApi
       .getAll(true)
       .then((data) => {
         setPlans(data);
-        // Pre-select the recommended plan, or fall back to the first active plan.
-        const recommended = data.find((p) => p.is_recommended);
-        setSelectedPlan(recommended?.id ?? data[0]?.id ?? null);
+        selectPlan(data);
       })
       .catch((err) => console.error('Plans fetch failed:', err))
       .finally(() => setLoading(false));
+    // prefetchedPlans/autoPay are read once from the navigation state this
+    // component was mounted with and never change for the lifetime of this
+    // page view — intentionally not re-running this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { phoneNumber: sessionPhoneNumber } = useAuth();
@@ -227,6 +234,21 @@ const PlansPage = () => {
     }
   };
 
+  // autoPay (see the top of this component) skips the manual "Pay Now" tap
+  // entirely — fires once, as soon as the Monthly plan is selected and the
+  // session phone number is available, so Razorpay Checkout opens right
+  // after landing here. Ref-guarded the same way registrationTracked is
+  // above, so retrying after a failure/cancellation via "Try Again" doesn't
+  // re-trigger this and skip the user's manual retry tap.
+  const autoPayTriggered = useRef(false);
+  useEffect(() => {
+    if (!autoPay || autoPayTriggered.current) return;
+    if (paymentPhase !== 'idle' || !selectedPlan || !customerPhone) return;
+    autoPayTriggered.current = true;
+    handlePayNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPay, paymentPhase, selectedPlan, customerPhone]);
+
   // Lets the user resolve a 'timeout' state immediately instead of waiting
   // for pollUntilResolved's next tick — same manual escape hatch the old
   // polling-based flow had.
@@ -249,6 +271,13 @@ const PlansPage = () => {
     setErrorMsg('');
   };
 
+  // While autoPay is still working towards opening Razorpay Checkout (or
+  // waiting on it / confirming right after), there's nothing useful for the
+  // plan-list UI to show — rendering it would just be a plan-picker flash
+  // the user never asked to see. Once it fails/cancels/times out, fall
+  // through to the normal UI so "Try Again" has full context again.
+  const autoPayInFlight = autoPay && ['idle', 'creating', 'checkout_open', 'confirming'].includes(paymentPhase);
+
   return (
     <div className="w-full bg-bg-dark pt-24 pb-12 flex flex-col items-center px-4 min-h-[calc(100vh-80px)]">
       <div className="w-full max-w-md bg-black border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden mt-8">
@@ -258,6 +287,16 @@ const PlansPage = () => {
         >
           <ArrowLeft size={24} />
         </button>
+
+        {autoPayInFlight ? (
+          <div data-testid="autopay-loading" className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="animate-spin text-[#00A8E1]" size={32} />
+            <p className="text-gray-400 text-sm">
+              {paymentPhase === 'confirming' ? 'Confirming your payment…' : 'Opening secure payment…'}
+            </p>
+          </div>
+        ) : (
+        <>
         <h1 className="text-white text-2xl font-bold text-center mb-8 tracking-wide">
           EXPLORE PLANS
         </h1>
@@ -394,6 +433,8 @@ const PlansPage = () => {
               </button>
             )}
           </>
+        )}
+        </>
         )}
       </div>
     </div>
