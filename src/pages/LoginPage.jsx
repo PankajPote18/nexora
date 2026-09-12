@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Crown } from 'lucide-react';
 import { useAuth, setDemoSession, markPaid } from '../hooks/useAuth';
 import { plansApi, paymentsApi } from '../services/api';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
@@ -10,9 +10,16 @@ const COUNTRY_CODE = '+91';
 
 const isValidPhone = (digits) => /^\d{10}$/.test(digits);
 
+const CADENCE_LABEL = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
+
 const LoginPage = () => {
   const [phoneDigits, setPhoneDigits] = useState('');
   const [loading, setLoading] = useState(false);
+  // null = still loading; [] = loaded (or failed) with nothing usable.
+  // Fetched once here, on mount, so it's both ready to display in the plan
+  // summary card below and already available to handleProceedToPay without
+  // a second round trip.
+  const [plans, setPlans] = useState(null);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -25,7 +32,13 @@ const LoginPage = () => {
   // preload failed or hasn't finished yet.
   useEffect(() => {
     loadRazorpayCheckout().catch(() => {});
+    plansApi.getAll(true).then(setPlans).catch((err) => {
+      console.error('Plans fetch failed:', err);
+      setPlans([]);
+    });
   }, []);
+
+  const monthlyPlan = plans?.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -50,14 +63,18 @@ const LoginPage = () => {
     // getSubscriptionStatus and CLAUDE.md's Payment/Subscription models.
     // This is a real DB lookup, not the localStorage-only demo flag alone.
     //
-    // Fetched in parallel with that check (not after it) — most logins are
-    // NOT already-subscribed, so this plan list is needed almost every
-    // time; fetching it only after learning that saves nothing and just
-    // adds a second sequential round trip PlansPage.jsx would otherwise
+    // Reuses the plans already fetched on mount (for the plan summary card
+    // below) when available; falls back to fetching again here on the off
+    // chance that request hasn't resolved yet or failed. Either way this
+    // runs in parallel with the subscription-status check, not after it —
+    // most logins are NOT already-subscribed, so the plan list is needed
+    // almost every time, and fetching it only after learning that would
+    // just add a second sequential round trip PlansPage.jsx would otherwise
     // have to make itself before Razorpay can open.
+    const plansPromise = plans && plans.length > 0 ? Promise.resolve(plans) : plansApi.getAll(true);
     const [statusResult, plansResult] = await Promise.allSettled([
       paymentsApi.getSubscriptionStatus(phoneDigits),
-      plansApi.getAll(true),
+      plansPromise,
     ]);
 
     if (statusResult.status === 'fulfilled' && statusResult.value.active) {
@@ -138,6 +155,30 @@ const LoginPage = () => {
             )}
           </button>
         </form>
+
+        {/* What "Proceed to Pay" actually charges — kept in sync with the
+            live Monthly SubscriptionPlan so this can never show a stale
+            price/name (see subscriptionPlan.controller.js's razorpay_plan_id
+            invalidation fix for the matching backend-side guarantee). */}
+        {monthlyPlan && (
+          <div className="mt-5 flex items-center justify-between gap-3 bg-bg-lighter border border-gray-700 rounded-xl px-4 py-3.5">
+            <div className="flex items-center gap-3 min-w-0">
+              <Crown className="text-brand shrink-0" size={20} />
+              <div className="min-w-0">
+                <p className="text-white font-semibold text-sm truncate">{monthlyPlan.name}</p>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Access to 10+ movie trays and 10+ web series trays
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="w-px h-8 bg-gray-700" />
+              <span className="text-white font-bold text-sm whitespace-nowrap">
+                ₹ {monthlyPlan.original_price}/{CADENCE_LABEL[(monthlyPlan.billing_cycle || '').toUpperCase()] || 'month'}
+              </span>
+            </div>
+          </div>
+        )}
 
         <p className="mt-8 text-center text-xs text-gray-500 leading-relaxed px-2">
           By continuing you agree to our{' '}
