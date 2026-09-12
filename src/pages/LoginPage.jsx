@@ -166,9 +166,6 @@ const LoginPage = () => {
               <Crown className="text-brand shrink-0" size={20} />
               <div className="min-w-0">
                 <p className="text-white font-semibold text-sm truncate">{monthlyPlan.name}</p>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  Access to 10+ movie trays and 10+ web series trays
-                </p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
