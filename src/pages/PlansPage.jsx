@@ -5,6 +5,7 @@ import { plansApi, paymentsApi } from '../services/api';
 import { useAuth, markPaid } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
+import { getStoredClickId } from '../analytics/affiliateClickId';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
@@ -176,6 +177,10 @@ const PlansPage = () => {
         customer_phone: customerPhone.trim(),
         fbc: getStoredFbc(),
         fbp: getFbpCookie(),
+        // Affiliate/marketing partner attribution (TrafficMedia24) — null
+        // when this visitor never arrived with a ?click_id=... URL param.
+        // See src/analytics/affiliateClickId.js and CLAUDE.md §26.
+        click_id: getStoredClickId(),
         // Every plan (weekly/monthly/annual) bills via a Razorpay Subscription
         // rather than a one-time order, so it auto-renews on that plan's own
         // cadence — see BILLING_CYCLE_TO_RAZORPAY in payment.controller.js.

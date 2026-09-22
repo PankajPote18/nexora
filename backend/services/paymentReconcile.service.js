@@ -2,6 +2,7 @@ const { Payment, Subscription, SubscriptionPlan } = require('../models');
 const { sequelize } = require('../config/db.config');
 const razorpayUtil = require('../utils/razorpay.util');
 const metaCapiUtil = require('../utils/metaCapi.util');
+const affiliatePostbackUtil = require('../utils/affiliatePostback.util');
 
 const FINAL_STATUSES = ['success', 'failed', 'cancelled'];
 const VERIFY_THROTTLE_MS = 5000;
@@ -52,6 +53,23 @@ async function applyPaymentResult(txnid, razorpayPayment) {
         if (newStatus === 'success' && !payment.capi_sent_at && payment.payment_method !== 'RAZORPAY_AUTOPAY') {
             sendMetaCapiCompleteRegistration(payment).catch((err) => {
                 console.error(`Meta CAPI send failed for txnid=${txnid}:`, err);
+            });
+        }
+
+        // Affiliate S2S conversion postback (TrafficMedia24, CLAUDE.md §26) —
+        // only for the original conversion, never a recurring autopay
+        // re-charge (same reasoning as the Meta CAPI guard above), only when
+        // this visitor actually arrived with a click_id, and only once per
+        // payment. This branch is only reached the instant `status`
+        // transitions into 'success' (the FINAL_STATUSES check above makes
+        // every later call to applyPaymentResult for this same payment
+        // return early before ever reaching here), so a concurrent
+        // verify-call/webhook race can't double-send either — the
+        // `!affiliate_postback_sent_at` check is extra defense-in-depth on
+        // top of that, mirroring the capi_sent_at guard above.
+        if (newStatus === 'success' && payment.click_id && !payment.affiliate_postback_sent_at && payment.payment_method !== 'RAZORPAY_AUTOPAY') {
+            sendAffiliateConversionPostback(payment).catch((err) => {
+                console.error(`Affiliate postback failed for txnid=${txnid}:`, err);
             });
         }
 
@@ -203,6 +221,25 @@ async function sendMetaCapiCompleteRegistration(payment) {
         fbp: payment.fbp
     });
     await payment.update({ capi_sent_at: new Date() });
+}
+
+// Fires the S2S conversion postback to the affiliate partner for a payment
+// that just became 'success' and has a click_id — see
+// backend/utils/affiliatePostback.util.js for the actual HTTP call/URL
+// construction. Only marks affiliate_postback_sent_at on an actual success;
+// left null on failure so a future reconciliation pass can find and retry
+// it (see the column's own comment on the Payment model) — deliberately
+// different from sendMetaCapiCompleteRegistration's capi_sent_at, which
+// marks any attempt regardless of outcome, since CAPI has no equivalent
+// retry requirement.
+async function sendAffiliateConversionPostback(payment) {
+    const result = await affiliatePostbackUtil.sendAffiliatePostback({
+        clickId: payment.click_id,
+        txnid: payment.txnid
+    });
+    if (result.ok) {
+        await payment.update({ affiliate_postback_sent_at: new Date() });
+    }
 }
 
 module.exports = {

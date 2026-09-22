@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { trackPageview } from './tracker';
 import { loadGoogleAnalytics, loadGoogleTagManager, trackGaPageview } from './gaLoader';
 import { deferToIdle } from './deferToIdle';
+import { captureClickId } from './affiliateClickId';
 
 // Paths this analytics module deliberately never tracks as visitor traffic:
 // the admin CMS and the analytics dashboard itself — otherwise the site
@@ -38,6 +39,14 @@ export function useAnalyticsTracker() {
             loadGoogleTagManager();
         });
     }, []);
+
+    // Independent of the pageview dedup/exclusion logic below — an affiliate
+    // link could in principle land on any path, and capturing is idempotent
+    // (a no-op whenever the URL has no click_id), so it just runs on every
+    // navigation rather than sharing the pageview effect's guards.
+    useEffect(() => {
+        captureClickId();
+    }, [location.pathname, location.search]);
 
     useEffect(() => {
         if (isExcluded(location.pathname)) return;

@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { Payment, Subscription, SubscriptionPlan } = require('../models');
 const razorpayUtil = require('../utils/razorpay.util');
 const { getClientIp } = require('../utils/analytics/ipHash.util');
+const { isValidClickId } = require('../utils/affiliatePostback.util');
 const {
     FINAL_STATUSES,
     VERIFY_THROTTLE_MS,
@@ -48,7 +49,7 @@ const generateTxnId = () => {
 // Checkout.js.
 exports.createPayment = async (req, res) => {
     try {
-        const { plan_id, customer_name, customer_email, customer_phone, fbc, fbp, enable_autopay } = req.body;
+        const { plan_id, customer_name, customer_email, customer_phone, fbc, fbp, click_id, enable_autopay } = req.body;
 
         if (!plan_id || !customer_name || !customer_email || !customer_phone) {
             return res.status(400).json({ message: 'plan_id, customer_name, customer_email and customer_phone are required' });
@@ -87,6 +88,15 @@ exports.createPayment = async (req, res) => {
         // trackCompleteRegistration in src/analytics/metaEvents.js.
         const metaEventId = crypto.randomUUID();
 
+        // Affiliate/marketing partner attribution (TrafficMedia24, see
+        // CLAUDE.md §26) — a malformed/tampered value is silently dropped
+        // (not a 400) so a broken click_id never blocks an otherwise valid
+        // payment; it just means no postback fires for this one.
+        if (click_id && !isValidClickId(click_id)) {
+            console.warn(`Dropping malformed click_id on payment create (txnid not yet generated, plan=${plan_id})`);
+        }
+        const sanitizedClickId = isValidClickId(click_id) ? click_id : null;
+
         // Create the pending record first so we have an audit trail even if
         // the call to Razorpay below fails outright.
         const payment = await Payment.create({
@@ -100,6 +110,7 @@ exports.createPayment = async (req, res) => {
             status: 'pending',
             fbc: typeof fbc === 'string' ? fbc.slice(0, 255) : null,
             fbp: typeof fbp === 'string' ? fbp.slice(0, 255) : null,
+            click_id: sanitizedClickId,
             client_ip: getClientIp(req),
             client_user_agent: (req.headers['user-agent'] || '').toString().slice(0, 512),
             meta_event_id: metaEventId
@@ -139,7 +150,7 @@ exports.createPayment = async (req, res) => {
                     last_payment_id: payment.id
                 });
 
-                console.log(`Subscription created: txnid=${txnid}, plan=${plan.id}, razorpaySubscriptionId=${subscription.id}`);
+                console.log(`Subscription created: txnid=${txnid}, plan=${plan.id}, razorpaySubscriptionId=${subscription.id}, hasClickId=${Boolean(sanitizedClickId)}`);
 
                 return res.status(201).json({
                     paymentId: payment.id,
@@ -176,7 +187,7 @@ exports.createPayment = async (req, res) => {
 
         await payment.update({ razorpay_order_id: order.id });
 
-        console.log(`Payment created: txnid=${txnid}, plan=${plan.id}, amount=${amount}`);
+        console.log(`Payment created: txnid=${txnid}, plan=${plan.id}, amount=${amount}, hasClickId=${Boolean(sanitizedClickId)}`);
 
         return res.status(201).json({
             paymentId: payment.id,

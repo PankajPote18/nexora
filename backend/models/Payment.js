@@ -124,6 +124,24 @@ const Payment = sequelize.define('Payment', {
     capi_sent_at: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    // Affiliate/marketing partner attribution (TrafficMedia24, see CLAUDE.md
+    // §25) — captured from the browser at checkout (POST /api/payments/create)
+    // same as fbc/fbp above, since it can only ever come from the visitor's
+    // own landing URL. Null for any payment from a non-affiliate visitor.
+    // See migration 20260922100000-add-click-id-to-payments.js.
+    click_id: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    // Set only once the S2S conversion postback to the affiliate partner
+    // actually succeeds (see paymentReconcile.service.js) — left null on
+    // failure so a future reconciliation pass can find and retry it via
+    // `WHERE status = 'success' AND click_id IS NOT NULL AND
+    // affiliate_postback_sent_at IS NULL`.
+    affiliate_postback_sent_at: {
+        type: DataTypes.DATE,
+        allowNull: true
     }
 }, {
     tableName: 'payments',
