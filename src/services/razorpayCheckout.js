@@ -7,6 +7,14 @@
 // opening Razorpay Checkout.
 const RAZORPAY_CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
 
+// A slow/blocked network can leave the <script> tag's onload/onerror never
+// firing at all (as opposed to a definite failure like a 404, which onerror
+// does catch) — without a bound on that, a caller's `await` never settles,
+// leaving the UI stuck on its loading state indefinitely with no error and
+// no retry path. This timeout guarantees the promise always eventually
+// settles one way or the other.
+const LOAD_TIMEOUT_MS = 15000;
+
 let checkoutScriptPromise = null;
 
 export function loadRazorpayCheckout() {
@@ -15,8 +23,18 @@ export function loadRazorpayCheckout() {
   checkoutScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = RAZORPAY_CHECKOUT_SRC;
-    script.onload = () => resolve();
+
+    const timeoutId = setTimeout(() => {
+      checkoutScriptPromise = null;
+      reject(new Error('Loading the payment form is taking too long. Please check your connection and try again.'));
+    }, LOAD_TIMEOUT_MS);
+
+    script.onload = () => {
+      clearTimeout(timeoutId);
+      resolve();
+    };
     script.onerror = () => {
+      clearTimeout(timeoutId);
       checkoutScriptPromise = null;
       reject(new Error('Failed to load the payment form. Please check your connection and try again.'));
     };
