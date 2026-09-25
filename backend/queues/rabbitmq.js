@@ -13,6 +13,25 @@ const amqp = require('amqplib');
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const RECONNECT_DELAY_MS = parseInt(process.env.RABBITMQ_RECONNECT_DELAY_MS, 10) || 5000;
 
+// Production RABBITMQ_URL carries a username/password — never log it raw.
+function redactUrl(url) {
+    try {
+        const u = new URL(url);
+        if (u.password) u.password = '***';
+        return u.toString();
+    } catch {
+        return '(unparseable RABBITMQ_URL)';
+    }
+}
+const SAFE_RABBITMQ_URL = redactUrl(RABBITMQ_URL);
+
+// Callbacks re-run on every successful (re)connect — a consumer registered on
+// a channel dies with that channel, so it has to be set up again each time.
+const connectListeners = [];
+function onConnect(listener) {
+    connectListeners.push(listener);
+}
+
 // amqplib can reject with an AggregateError whose own .message is empty
 // (e.g. plain ECONNREFUSED) — fall back to .code/.name so failures are
 // never logged as a blank, useless string.
@@ -64,7 +83,14 @@ async function connect() {
                 console.error('[rabbitmq] channel error:', describeError(err));
             });
 
-            console.log(`[rabbitmq] connected (${RABBITMQ_URL})`);
+            console.log(`[rabbitmq] connected (${SAFE_RABBITMQ_URL})`);
+            for (const listener of connectListeners) {
+                try {
+                    await listener(channel);
+                } catch (err) {
+                    console.error('[rabbitmq] onConnect listener failed:', describeError(err));
+                }
+            }
             return channel;
         } catch (err) {
             console.error('[rabbitmq] connection failed:', describeError(err));
@@ -100,4 +126,4 @@ async function close() {
     }
 }
 
-module.exports = { connect, getChannel, close, RABBITMQ_URL };
+module.exports = { connect, getChannel, close, onConnect, RABBITMQ_URL: SAFE_RABBITMQ_URL };

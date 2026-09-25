@@ -16,12 +16,19 @@ function hashIp(ip) {
     return crypto.createHash('sha256').update(`${normalized}:${SALT}`).digest('hex');
 }
 
-// Best-effort real client IP: Render (and most PaaS hosts) sit behind a
-// proxy, so req.ip alone is the proxy's own address unless `trust proxy` is
+// Best-effort real client IP: production sits behind an Nginx reverse proxy,
+// so req.ip alone is the proxy's own address unless `trust proxy` is
 // configured app-wide — this project doesn't set that globally (would affect
 // every route, not just analytics), so read the header directly here
 // instead, same approach payment.controller.js already uses for s2s_client_ip.
 function getClientIp(req) {
+    // Production Nginx (see deploy/nginx/clickbuz.conf) sets X-Real-IP to the
+    // connecting address — unlike the first X-Forwarded-For entry, a client
+    // can't spoof it, so prefer it when present.
+    const realIp = req.headers['x-real-ip'];
+    if (realIp) {
+        return realIp.trim();
+    }
     const forwarded = req.headers['x-forwarded-for'];
     if (forwarded) {
         return forwarded.split(',')[0].trim();

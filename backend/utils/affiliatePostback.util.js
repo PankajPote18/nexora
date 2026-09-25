@@ -57,7 +57,9 @@ const sendAffiliatePostback = async ({ clickId, txnid }) => {
         // GET only — that's what the partner's own callback URL indicates;
         // no evidence of a required method/response contract beyond that
         // (see CLAUDE.md §26's "open questions" list).
-        const response = await fetch(postbackUrl, { method: 'GET' });
+        // Bounded so a hung partner endpoint can't leave this open forever
+        // (it's fire-and-forget, so it never blocks the payment itself).
+        const response = await fetch(postbackUrl, { method: 'GET', signal: AbortSignal.timeout(10000) });
         const text = await response.text().catch(() => '');
 
         if (!response.ok) {

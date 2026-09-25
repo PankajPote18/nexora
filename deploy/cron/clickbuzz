@@ -1,0 +1,12 @@
+# /etc/cron.d/clickbuzz — PRODUCTION scheduled jobs (copy from deploy/cron/clickbuzz).
+# Install: sudo cp /var/www/clickbuzz/deploy/cron/clickbuzz /etc/cron.d/clickbuzz && sudo chmod 644 /etc/cron.d/clickbuzz
+SHELL=/bin/bash
+# If Node/npm were installed via nvm, add that bin dir here (`dirname $(which npm)`).
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Nightly MySQL + config backup, 02:30 server time.
+30 2 * * * root bash /var/www/clickbuzz/deploy/backup-mysql.sh >> /var/log/clickbuzz-backup.log 2>&1
+
+# Weekly GeoLite2 refresh (MaxMind updates weekly). The backend reloads the file
+# automatically — no restart. Needs MAXMIND_LICENSE_KEY in backend/.env.
+15 4 * * 3 root cd /var/www/clickbuzz/backend && /usr/bin/env npm run --silent geo:update >> /var/log/clickbuzz-geoip.log 2>&1

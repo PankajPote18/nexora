@@ -26,6 +26,24 @@ cluster.schedulingPolicy = cluster.SCHED_RR;
 require('dotenv').config({ quiet: true });
 
 const PORT = process.env.PORT || 5000;
+// Optional bind address. Production (VPS) sets BIND_HOST=127.0.0.1 so Node is
+// only reachable through Nginx; unset keeps Node's default (all interfaces).
+// Deliberately not named HOST — some shells (zsh) export HOST=<hostname>.
+const HOST = process.env.BIND_HOST || undefined;
+
+// How the primary reconciles models with the live schema on boot:
+//   alter — sequelize.sync({ alter: true }): rewrites every table to match the
+//           models. Development default.
+//   safe  — sequelize.sync(): only creates tables that don't exist yet, never
+//           alters existing ones. Production default.
+//   none  — no sync at all; schema is managed purely by `npm run migrate`.
+// Why production must not use alter: on MySQL, every alter pass re-issues each
+// unique column with an inline UNIQUE, which adds another auto-named duplicate
+// index (txnid_2, txnid_3, ...) on every single boot — MySQL's 64-keys-per-
+// table limit then stops the backend from starting at all (already happened
+// once on users.email). Production schema changes go through migrations.
+const DB_SYNC_MODE = (process.env.DB_SYNC_MODE
+    || (process.env.NODE_ENV === 'production' ? 'safe' : 'alter')).toLowerCase();
 
 // Node's cluster module: fork one worker process per CPU core so this
 // backend can actually use all of them — a single Node process only ever
@@ -48,8 +66,29 @@ const numWorkers = parseInt(process.env.WEB_CONCURRENCY, 10) || os.cpus().length
 const TOTAL_DB_POOL_BUDGET = 30;
 const perWorkerPoolMax = Math.max(5, Math.floor(TOTAL_DB_POOL_BUDGET / numWorkers));
 
+// Production config sanity check — warnings only (never prints a value), so a
+// misconfigured VPS .env shows up in `pm2 logs` at boot instead of silently
+// sending test-mode payments/conversions.
+function warnOnProductionConfig() {
+    if (process.env.NODE_ENV !== 'production') return;
+    const warn = (msg) => console.warn(`[config] WARNING: ${msg}`);
+    const required = ['JWT_SECRET', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'ANALYTICS_IP_HASH_SALT', 'RABBITMQ_URL'];
+    for (const name of required) {
+        if (!process.env[name]) warn(`${name} is not set`);
+    }
+    if (!process.env.DATABASE_URL && !process.env.DB_HOST) warn('neither DATABASE_URL nor DB_HOST is set');
+    if ((process.env.RAZORPAY_KEY_ID || '').startsWith('rzp_test_')) warn('RAZORPAY_KEY_ID is a TEST-mode key');
+    if (process.env.META_CAPI_TEST_EVENT_CODE) warn('META_CAPI_TEST_EVENT_CODE is set — Conversions API events go to Meta test mode, not real reporting');
+    if (process.env.DB_SSL === 'true') warn('DB_SSL=true, but the VPS MySQL is not configured for TLS');
+    if (/^amqp:\/\/(guest:guest@)?(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(process.env.RABBITMQ_URL || '')) {
+        warn('RABBITMQ_URL has no dedicated user/vhost (uses the default guest account)');
+    }
+    if (!process.env.BIND_HOST) warn('BIND_HOST is not set — Node listens on all interfaces; set BIND_HOST=127.0.0.1 behind Nginx');
+}
+
 if (cluster.isPrimary) {
     console.log(`Primary ${process.pid} starting ${numWorkers} worker(s)...`);
+    warnOnProductionConfig();
 
     // The primary never serves HTTP (see the isPrimary/else split below) —
     // it only does the one-time sync/seed below and, afterwards, the
@@ -138,8 +177,14 @@ if (cluster.isPrimary) {
             const { host, port, database } = sequelize.config;
             console.log(`Database connection has been established successfully (${host}:${port}/${database}).`);
 
-            await sequelize.sync({ alter: true });
-            console.log('Database synchronized.');
+            if (DB_SYNC_MODE === 'alter') {
+                await sequelize.sync({ alter: true });
+            } else if (DB_SYNC_MODE === 'safe') {
+                await sequelize.sync();
+            } else if (DB_SYNC_MODE !== 'none') {
+                throw new Error(`Invalid DB_SYNC_MODE "${DB_SYNC_MODE}" (expected alter, safe or none)`);
+            }
+            console.log(`Database synchronized (DB_SYNC_MODE=${DB_SYNC_MODE}).`);
 
             await seedMasterData();
             console.log('Master data seeded.');
@@ -254,7 +299,7 @@ if (cluster.isPrimary) {
     // worker just eventually flushes its own received hits to the shared DB.
     require('./services/analytics/eventBuffer.service').start();
 
-    app.listen(PORT, () => {
-        console.log(`Worker ${process.pid} listening on port ${PORT}`);
+    app.listen(PORT, HOST, () => {
+        console.log(`Worker ${process.pid} listening on ${HOST || '*'}:${PORT}`);
     });
 }

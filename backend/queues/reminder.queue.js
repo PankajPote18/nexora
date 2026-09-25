@@ -41,16 +41,32 @@ async function publishToDeadLetter(job) {
 //   and republished with an incremented retry count after a short backoff.
 // - Failure, retries exhausted: routed to the dead-letter queue for manual
 //   inspection instead of being retried forever.
-async function consumeReminderJobs(handler, { maxRetries = 3, retryDelayMs = 3000 } = {}) {
-    const channel = await rabbitmq.connect();
-    if (!channel) {
-        console.error('[reminder.queue] RabbitMQ unavailable — worker will start consuming once a connection is established');
+//
+// The consumer is (re)attached on every RabbitMQ (re)connect via
+// rabbitmq.onConnect() — so it starts on its own if RabbitMQ was down at boot,
+// and comes back after a broker restart, instead of silently staying detached.
+async function consumeReminderJobs(handler, options = {}) {
+    rabbitmq.onConnect((channel) => attachConsumer(channel, handler, options));
+
+    // Already connected (e.g. by a publish) — listeners only run on a new
+    // connection, so attach to the existing channel directly.
+    const existing = rabbitmq.getChannel();
+    if (existing) {
+        await attachConsumer(existing, handler, options);
         return;
     }
 
+    const channel = await rabbitmq.connect();
+    if (!channel) {
+        console.error('[reminder.queue] RabbitMQ unavailable — worker will start consuming once a connection is established');
+    }
+    // On success, connect() has already run the onConnect listener above.
+}
+
+async function attachConsumer(channel, handler, { maxRetries = 3, retryDelayMs = 3000 } = {}) {
     await assertQueues(channel);
 
-    channel.consume(QUEUE_NAME, async (msg) => {
+    await channel.consume(QUEUE_NAME, async (msg) => {
         if (!msg) return;
 
         let job;

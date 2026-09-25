@@ -21,19 +21,36 @@ const geoCache = new LRUCache({ max: 2000, ttl: 24 * 60 * 60 * 1000 });
 
 const PRIVATE_IP_RE = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|::1$|fc00:|fe80:)/;
 
+// A missing/unreadable database is re-checked at most this often, so running
+// `npm run geo:update` on a live server takes effect without a restart
+// (instead of the "no database" result being cached for the process lifetime).
+const MISSING_DB_RECHECK_MS = 10 * 60 * 1000;
+
 let readerPromise = null;
+let readerMissingSince = 0;
 function getReader() {
-    if (readerPromise) return readerPromise;
+    if (readerPromise && !(readerMissingSince && Date.now() - readerMissingSince > MISSING_DB_RECHECK_MS)) {
+        return readerPromise;
+    }
+    const firstAttempt = !readerPromise;
     readerPromise = (async () => {
         if (!fs.existsSync(DB_PATH)) {
-            console.warn(`[analytics geolocation] no local database at ${DB_PATH} — run "npm run geo:update" from backend/, or the web-service fallback will be used if MAXMIND_ACCOUNT_ID is set.`);
+            if (firstAttempt) {
+                console.warn(`[analytics geolocation] no local database at ${DB_PATH} — run "npm run geo:update" from backend/, or the web-service fallback will be used if MAXMIND_ACCOUNT_ID is set.`);
+            }
+            readerMissingSince = Date.now();
             return null;
         }
         try {
             const maxmind = require('maxmind');
-            return await maxmind.open(DB_PATH);
+            // watchForUpdates: the weekly geo:update overwrites this file in
+            // place — the reader reloads it automatically, no restart needed.
+            const reader = await maxmind.open(DB_PATH, { watchForUpdates: true, watchForUpdatesNonPersistent: true });
+            readerMissingSince = 0;
+            return reader;
         } catch (err) {
             console.warn('[analytics geolocation] failed to open MaxMind database (non-fatal):', err.message);
+            readerMissingSince = Date.now();
             return null;
         }
     })();

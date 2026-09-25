@@ -27,6 +27,16 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  {
+    // The backend (and deploy/ helpers) are CommonJS Node code, not browser
+    // modules — without this every require/process/module is a false
+    // no-undef error.
+    files: ['backend/**/*.js', 'deploy/**/*.{js,cjs}'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+  },
 ])
 
 

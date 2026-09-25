@@ -77,7 +77,12 @@ async function main() {
     if (!mmdbFile) throw new Error('No .mmdb file found in the downloaded archive');
 
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.copyFileSync(path.join(tmpDir, extractedDir, mmdbFile), DB_PATH);
+    // Copy next to the target, then rename over it — rename is atomic on the
+    // same filesystem, so the running backend's file watcher (see
+    // geolocation.util.js's watchForUpdates) never reads a half-written file.
+    const stagingPath = `${DB_PATH}.tmp`;
+    fs.copyFileSync(path.join(tmpDir, extractedDir, mmdbFile), stagingPath);
+    fs.renameSync(stagingPath, DB_PATH);
     fs.rmSync(tmpDir, { recursive: true, force: true });
 
     console.log(`Saved to ${DB_PATH}`);

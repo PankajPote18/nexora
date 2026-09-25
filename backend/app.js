@@ -7,6 +7,8 @@ const compression = require('compression');
 const requestLogger = require('./middleware/requestLogger.middleware');
 
 const app = express();
+// Don't advertise the framework in every response header.
+app.disable('x-powered-by');
 
 // Middleware
 // level: 4 (default is ~6) — compression's own docs recommend 1-3 for
@@ -41,10 +43,10 @@ app.use(cors({
     origin: (origin, callback) => {
         // No Origin header (server-to-server calls, curl, Razorpay webhooks)
         // isn't a browser CORS request at all — always allow it through.
-        if (!origin || allowedOrigins.includes(origin)) {
-            return callback(null, true);
-        }
-        return callback(new Error('Not allowed by CORS'));
+        // Unknown origin: answer without CORS headers so the browser blocks
+        // it — not an Error, which would turn every such request into a 500
+        // plus a stack trace in logs/error.log.
+        return callback(null, !origin || allowedOrigins.includes(origin));
     }
 }));
 // `verify` stashes the exact raw request bytes on req.rawBody, alongside the
