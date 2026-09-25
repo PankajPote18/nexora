@@ -33,7 +33,7 @@ const PlansPage = () => {
   const prefetchedPlans = location.state?.plans;
   const [plans, setPlans] = useState(prefetchedPlans || []);
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [loading, setLoading] = useState(!prefetchedPlans);
+  const [loading, setLoading] = useState(!(prefetchedPlans && prefetchedPlans.length > 0));
 
   // Payment flow state
   const [paymentPhase, setPaymentPhase] = useState('idle'); // idle | creating | checkout_open | confirming | success | failed | cancelled | timeout | error
@@ -45,14 +45,25 @@ const PlansPage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
-  // autoPay (from LoginPage.jsx's "Proceed to Pay") always pays for the
-  // Monthly plan specifically, regardless of which plan is marked
-  // is_recommended; otherwise pre-select the recommended plan, or fall
-  // back to the first active plan.
+  // There's no plan picker on this page — it always charges the Monthly plan
+  // (the same one LoginPage.jsx's summary card shows), falling back to the
+  // recommended plan, then the first active plan, if no Monthly plan exists.
   const selectPlan = (data) => {
     const monthly = data.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
     const recommended = data.find((p) => p.is_recommended);
-    setSelectedPlan((autoPay ? monthly?.id : null) ?? recommended?.id ?? data[0]?.id ?? null);
+    setSelectedPlan(monthly?.id ?? recommended?.id ?? data[0]?.id ?? null);
+  };
+
+  const fetchPlans = () => {
+    setLoading(true);
+    plansApi
+      .getAll(true)
+      .then((data) => {
+        setPlans(data);
+        selectPlan(data);
+      })
+      .catch((err) => console.error('Plans fetch failed:', err))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -62,14 +73,7 @@ const PlansPage = () => {
     }
     // No usable prefetch (direct /plans visit, or LoginPage's own prefetch
     // failed) — fetch it ourselves, same as always.
-    plansApi
-      .getAll(true)
-      .then((data) => {
-        setPlans(data);
-        selectPlan(data);
-      })
-      .catch((err) => console.error('Plans fetch failed:', err))
-      .finally(() => setLoading(false));
+    fetchPlans();
     // prefetchedPlans/autoPay are read once from the navigation state this
     // component was mounted with and never change for the lifetime of this
     // page view — intentionally not re-running this on every render.
@@ -277,23 +281,40 @@ const PlansPage = () => {
   };
 
   // While autoPay is still working towards opening Razorpay Checkout (or
-  // waiting on it / confirming right after), there's nothing useful for the
-  // plan-list UI to show — rendering it would just be a plan-picker flash
-  // the user never asked to see. Once it fails/cancels/times out, fall
-  // through to the normal UI so "Try Again" has full context again.
-  const autoPayInFlight = autoPay && ['idle', 'creating', 'checkout_open', 'confirming'].includes(paymentPhase);
+  // waiting on it / confirming right after), just show a spinner. Once it
+  // fails/cancels/times out, fall through to the payment card so "Try Again"
+  // has context.
+  // If the plan list failed to load (or came back empty) there is nothing to
+  // pay for, so autoPay can never fire — drop out of the spinner and show the
+  // "couldn't load" state below instead of spinning forever.
+  const noPlanAvailable = !loading && !selectedPlan;
+  const autoPayInFlight =
+    autoPay && !noPlanAvailable && ['idle', 'creating', 'checkout_open', 'confirming'].includes(paymentPhase);
 
   return (
     <div className="w-full bg-bg-dark pt-24 pb-12 flex flex-col items-center px-4 min-h-[calc(100vh-80px)]">
       <div className="w-full max-w-md bg-black border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden mt-8">
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute top-6 left-6 text-gray-400 hover:text-white transition-colors cursor-pointer"
-        >
-          <ArrowLeft size={24} />
-        </button>
+        {paymentPhase !== 'success' && (
+          <button
+            onClick={() => navigate(-1)}
+            className="absolute top-6 left-6 text-gray-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={24} />
+          </button>
+        )}
 
-        {autoPayInFlight ? (
+        {paymentPhase === 'success' ? (
+          // Success: tick mark, then the effect above redirects home.
+          <div
+            data-testid="payment-status-card"
+            data-status="success"
+            className="flex flex-col items-center justify-center text-center py-16 gap-3 auth-pop-in"
+          >
+            <CheckCircle2 className="text-green-500" size={64} />
+            <p className="text-white text-xl font-bold">Payment successful</p>
+            <p className="text-gray-400 text-sm">Your subscription is now active. Taking you home…</p>
+          </div>
+        ) : autoPayInFlight ? (
           <div data-testid="autopay-loading" className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="animate-spin text-[#00A8E1]" size={32} />
             <p className="text-gray-400 text-sm">
@@ -303,76 +324,40 @@ const PlansPage = () => {
         ) : (
         <>
         <h1 className="text-white text-2xl font-bold text-center mb-8 tracking-wide">
-          EXPLORE PLANS
+          Complete Payment
         </h1>
 
         {loading ? (
           <div className="flex justify-center py-10">
             <Loader2 className="animate-spin text-[#00A8E1]" size={28} />
           </div>
+        ) : noPlanAvailable ? (
+          <div data-testid="plans-load-error" className="flex flex-col items-center text-center gap-4 py-6">
+            <AlertTriangle className="text-yellow-500" size={32} />
+            <p className="text-white font-bold">Couldn't load payment details</p>
+            <p className="text-gray-400 text-sm">Please check your connection and try again.</p>
+            <button
+              onClick={fetchPlans}
+              data-testid="retry-plans-button"
+              className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg transition-all duration-200 cursor-pointer"
+            >
+              Try Again
+            </button>
+          </div>
         ) : (
           <>
-            <div className="space-y-4 mb-8">
-              {plans.map((plan) => (
-                <div className="relative" key={plan.id}>
-                  {/* Recommended Badge */}
-                  {plan.is_recommended && (
-                    <div className="absolute -top-3 left-6 bg-[#1a1d24] border border-gray-700 text-[#00A8E1] text-xs font-bold px-3 py-1 rounded-full z-10">
-                      Recommended
-                    </div>
-                  )}
 
-                  <div
-                    onClick={() => setSelectedPlan(plan.id)}
-                    data-testid={`plan-option-${plan.id}`}
-                    data-selected={selectedPlan === plan.id}
-                    className={`relative overflow-hidden flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-                      selectedPlan === plan.id
-                        ? 'border-[#00A8E1] bg-[#00A8E1]/5'
-                        : 'border-gray-700 hover:border-gray-500'
-                    }`}
-                  >
-                    {/* Left: Radio & Title */}
-                    <div className="flex items-center space-x-3 md:space-x-4 z-10">
-                      <div
-                        className={`w-4 h-4 md:w-5 md:h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          selectedPlan === plan.id ? 'border-[#00A8E1]' : 'border-gray-500'
-                        }`}
-                      >
-                        {selectedPlan === plan.id && (
-                          <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-[#00A8E1]"></div>
-                        )}
-                      </div>
-                      <span className="text-white font-bold text-base md:text-lg">{plan.name}</span>
-                    </div>
-
-                    {/* Right: Pricing */}
-                    <span className="text-white font-bold text-base md:text-lg z-10">
-                      ₹ {plan.original_price}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-gray-500 text-xs text-center -mt-4 mb-6 leading-relaxed">
+            <p className="text-gray-500 text-xs text-center mb-6 leading-relaxed">
               Renews automatically via UPI Autopay on your plan's cycle. You can cancel the mandate anytime from your UPI app.
             </p>
 
-            {/* Payment status card — success/failed/cancelled/timeout */}
-            {(paymentPhase === 'success' || paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
+            {/* Payment status card — failed/cancelled/timeout */}
+            {(paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
               <div
                 data-testid="payment-status-card"
                 data-status={paymentPhase}
                 className="mb-6 p-4 rounded-xl border border-gray-800 bg-[#0f1115] flex flex-col items-center text-center gap-2"
               >
-                {paymentPhase === 'success' && (
-                  <>
-                    <CheckCircle2 className="text-green-500" size={32} />
-                    <p className="text-white font-bold">Payment successful</p>
-                    <p className="text-gray-400 text-sm">Your subscription is now active.</p>
-                  </>
-                )}
                 {paymentPhase === 'failed' && (
                   <>
                     <XCircle className="text-red-500" size={32} />
@@ -426,10 +411,10 @@ const PlansPage = () => {
               >
                 Try Again
               </button>
-            ) : paymentPhase !== 'success' && (
+            ) : (
               <button
                 onClick={handlePayNow}
-                disabled={paymentPhase === 'creating'}
+                disabled={paymentPhase === 'creating' || !selectedPlan}
                 data-testid="pay-now-button"
                 className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >

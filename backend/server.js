@@ -133,7 +133,10 @@ if (cluster.isPrimary) {
 
     sequelize.authenticate()
         .then(async () => {
-            console.log('Database connection has been established successfully.');
+            // Host/port/database only (never credentials) — lets deploy logs
+            // confirm which MySQL instance this process actually reached.
+            const { host, port, database } = sequelize.config;
+            console.log(`Database connection has been established successfully (${host}:${port}/${database}).`);
 
             await sequelize.sync({ alter: true });
             console.log('Database synchronized.');

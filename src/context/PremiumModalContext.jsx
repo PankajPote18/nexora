@@ -35,7 +35,7 @@ export const PremiumModalProvider = ({ children }) => {
               You need an active subscription to watch this movie. Unlock unlimited access to ClickBuz today!
             </p>
             <button onClick={handleSubscribe} className="w-full py-3 bg-[#00A8E1] hover:bg-[#008bc0] text-white rounded-lg font-bold transition shadow-lg">
-              Explore Plans
+              Subscribe Now
             </button>
           </div>
         </div>
