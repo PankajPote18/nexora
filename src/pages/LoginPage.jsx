@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
-import { Loader2, Crown } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth, setDemoSession, markPaid } from '../hooks/useAuth';
 import { plansApi, paymentsApi } from '../services/api';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
@@ -10,24 +10,21 @@ const COUNTRY_CODE = '+91';
 
 const isValidPhone = (digits) => /^\d{10}$/.test(digits);
 
-const CADENCE_LABEL = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
-
 const LoginPage = () => {
   const [phoneDigits, setPhoneDigits] = useState('');
   const [loading, setLoading] = useState(false);
   // null = still loading; [] = loaded (or failed) with nothing usable.
-  // Fetched once here, on mount, so it's both ready to display in the plan
-  // summary card below and already available to handleProceedToPay without
-  // a second round trip.
+  // Prefetched on mount so it can be handed to the Explore Plans page
+  // without a second round trip.
   const [plans, setPlans] = useState(null);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   // Best-effort preload, fired the instant this screen mounts: most people
-  // who land here are about to pay, so by the time "Proceed to Pay" is
-  // actually tapped, Razorpay's Checkout.js is very likely already loaded —
-  // removing that network round trip from the critical path to the modal
-  // opening. handlePayNow's own loadRazorpayCheckout() call (in
+  // who land here are about to pay, so by the time "Pay Now" is tapped on
+  // the Explore Plans page, Razorpay's Checkout.js is very likely already
+  // loaded — removing that network round trip from the critical path to the
+  // modal opening. handlePayNow's own loadRazorpayCheckout() call (in
   // PlansPage.jsx) still runs and will retry/surface a real error if this
   // preload failed or hasn't finished yet.
   useEffect(() => {
@@ -38,15 +35,13 @@ const LoginPage = () => {
     });
   }, []);
 
-  const monthlyPlan = plans?.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
-
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
   const valid = isValidPhone(phoneDigits);
 
-  const handleProceedToPay = async (e) => {
+  const handleProceed = async (e) => {
     e.preventDefault();
     if (!valid || loading) return;
 
@@ -63,8 +58,7 @@ const LoginPage = () => {
     // getSubscriptionStatus and CLAUDE.md's Payment/Subscription models.
     // This is a real DB lookup, not the localStorage-only demo flag alone.
     //
-    // Reuses the plans already fetched on mount (for the plan summary card
-    // below) when available; falls back to fetching again here on the off
+    // Reuses the plans already fetched on mount when available; falls back to fetching again here on the off
     // chance that request hasn't resolved yet or failed. Either way this
     // runs in parallel with the subscription-status check, not after it —
     // most logins are NOT already-subscribed, so the plan list is needed
@@ -90,14 +84,11 @@ const LoginPage = () => {
     }
 
     setLoading(false);
-    // autoPay tells PlansPage.jsx to skip manual plan selection and go
-    // straight to Razorpay Checkout for the Monthly plan — the rest of that
-    // page's payment flow (verify, success -> redirect home, failure -> stay
-    // put) is unchanged. Handing over the already-fetched plans (when that
+    // Explore Plans page (Monthly plan only) — payment starts when the user
+    // taps "Pay Now" there. Handing over the already-fetched plans (when that
     // succeeded) lets it skip re-fetching them itself.
     navigate('/plans', {
       state: {
-        autoPay: true,
         plans: plansResult.status === 'fulfilled' ? plansResult.value : undefined,
       },
     });
@@ -117,7 +108,7 @@ const LoginPage = () => {
           Enter your mobile number to sign in or create an account.
         </p>
 
-        <form onSubmit={handleProceedToPay} className="space-y-5">
+        <form onSubmit={handleProceed} className="space-y-5">
           <div>
             <div className="flex items-center bg-bg-lighter border border-gray-700 focus-within:border-brand rounded-xl overflow-hidden transition-colors">
               <span className="px-4 py-3.5 text-white text-sm font-medium border-r border-gray-700 whitespace-nowrap shrink-0">
@@ -151,31 +142,10 @@ const LoginPage = () => {
                 Please wait…
               </>
             ) : (
-              'Proceed to Pay'
+              'Proceed'
             )}
           </button>
         </form>
-
-        {/* What "Proceed to Pay" actually charges — kept in sync with the
-            live Monthly SubscriptionPlan so this can never show a stale
-            price/name (see subscriptionPlan.controller.js's razorpay_plan_id
-            invalidation fix for the matching backend-side guarantee). */}
-        {monthlyPlan && (
-          <div className="mt-5 flex items-center justify-between gap-3 bg-bg-lighter border border-gray-700 rounded-xl px-4 py-3.5">
-            <div className="flex items-center gap-3 min-w-0">
-              <Crown className="text-brand shrink-0" size={20} />
-              <div className="min-w-0">
-                <p className="text-white font-semibold text-sm truncate">{monthlyPlan.name}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="w-px h-8 bg-gray-700" />
-              <span className="text-white font-bold text-sm whitespace-nowrap">
-                ₹ {monthlyPlan.original_price}/{CADENCE_LABEL[(monthlyPlan.billing_cycle || '').toUpperCase()] || 'month'}
-              </span>
-            </div>
-          </div>
-        )}
 
         <p className="mt-8 text-center text-xs text-gray-500 leading-relaxed px-2">
           By continuing you agree to our{' '}

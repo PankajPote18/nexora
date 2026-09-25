@@ -22,14 +22,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PlansPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  // Set by LoginPage.jsx's "Proceed to Pay" button — skips manual plan
-  // selection and opens Razorpay Checkout directly for the Monthly plan.
-  const autoPay = Boolean(location.state?.autoPay);
   // LoginPage.jsx prefetches the plan list in parallel with its
   // subscription-status check and hands it over here via navigation state,
-  // so this page can skip its own /api/subscription-plans round trip
-  // entirely on the autoPay path — one less network wait between "Proceed
-  // to Pay" and Razorpay actually opening.
+  // so this page can skip its own /api/subscription-plans round trip.
   const prefetchedPlans = location.state?.plans;
   const [plans, setPlans] = useState(prefetchedPlans || []);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -45,8 +40,7 @@ const PlansPage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
-  // There's no plan picker on this page — it always charges the Monthly plan
-  // (the same one LoginPage.jsx's summary card shows), falling back to the
+  // Explore Plans shows a single plan — the Monthly one — falling back to the
   // recommended plan, then the first active plan, if no Monthly plan exists.
   const selectPlan = (data) => {
     const monthly = data.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
@@ -74,7 +68,7 @@ const PlansPage = () => {
     // No usable prefetch (direct /plans visit, or LoginPage's own prefetch
     // failed) — fetch it ourselves, same as always.
     fetchPlans();
-    // prefetchedPlans/autoPay are read once from the navigation state this
+    // prefetchedPlans is read once from the navigation state this
     // component was mounted with and never change for the lifetime of this
     // page view — intentionally not re-running this on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,21 +237,6 @@ const PlansPage = () => {
     }
   };
 
-  // autoPay (see the top of this component) skips the manual "Pay Now" tap
-  // entirely — fires once, as soon as the Monthly plan is selected and the
-  // session phone number is available, so Razorpay Checkout opens right
-  // after landing here. Ref-guarded the same way registrationTracked is
-  // above, so retrying after a failure/cancellation via "Try Again" doesn't
-  // re-trigger this and skip the user's manual retry tap.
-  const autoPayTriggered = useRef(false);
-  useEffect(() => {
-    if (!autoPay || autoPayTriggered.current) return;
-    if (paymentPhase !== 'idle' || !selectedPlan || !customerPhone) return;
-    autoPayTriggered.current = true;
-    handlePayNow();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPay, paymentPhase, selectedPlan, customerPhone]);
-
   // Lets the user resolve a 'timeout' state immediately instead of waiting
   // for pollUntilResolved's next tick — same manual escape hatch the old
   // polling-based flow had.
@@ -280,16 +259,10 @@ const PlansPage = () => {
     setErrorMsg('');
   };
 
-  // While autoPay is still working towards opening Razorpay Checkout (or
-  // waiting on it / confirming right after), just show a spinner. Once it
-  // fails/cancels/times out, fall through to the payment card so "Try Again"
-  // has context.
-  // If the plan list failed to load (or came back empty) there is nothing to
-  // pay for, so autoPay can never fire — drop out of the spinner and show the
-  // "couldn't load" state below instead of spinning forever.
+  // Plan list failed to load (or came back empty): nothing to pay for, so
+  // show the "couldn't load" state with a retry instead.
   const noPlanAvailable = !loading && !selectedPlan;
-  const autoPayInFlight =
-    autoPay && !noPlanAvailable && ['idle', 'creating', 'checkout_open', 'confirming'].includes(paymentPhase);
+  const plan = plans.find((p) => p.id === selectedPlan);
 
   return (
     <div className="w-full bg-bg-dark pt-24 pb-12 flex flex-col items-center px-4 min-h-[calc(100vh-80px)]">
@@ -314,17 +287,10 @@ const PlansPage = () => {
             <p className="text-white text-xl font-bold">Payment successful</p>
             <p className="text-gray-400 text-sm">Your subscription is now active. Taking you home…</p>
           </div>
-        ) : autoPayInFlight ? (
-          <div data-testid="autopay-loading" className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="animate-spin text-[#00A8E1]" size={32} />
-            <p className="text-gray-400 text-sm">
-              {paymentPhase === 'confirming' ? 'Confirming your payment…' : 'Opening secure payment…'}
-            </p>
-          </div>
         ) : (
         <>
         <h1 className="text-white text-2xl font-bold text-center mb-8 tracking-wide">
-          Complete Payment
+          EXPLORE PLANS
         </h1>
 
         {loading ? (
@@ -346,8 +312,23 @@ const PlansPage = () => {
           </div>
         ) : (
           <>
+            {plan && (
+              <div
+                data-testid={`plan-option-${plan.id}`}
+                data-selected="true"
+                className="relative overflow-hidden flex items-center justify-between p-4 rounded-xl border-2 border-[#00A8E1] bg-[#00A8E1]/5 mb-8"
+              >
+                <div className="flex items-center space-x-3 md:space-x-4">
+                  <div className="w-4 h-4 md:w-5 md:h-5 rounded-full border-2 border-[#00A8E1] flex items-center justify-center">
+                    <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-[#00A8E1]"></div>
+                  </div>
+                  <span className="text-white font-bold text-base md:text-lg">{plan.name}</span>
+                </div>
+                <span className="text-white font-bold text-base md:text-lg">₹ {plan.original_price}</span>
+              </div>
+            )}
 
-            <p className="text-gray-500 text-xs text-center mb-6 leading-relaxed">
+            <p className="text-gray-500 text-xs text-center -mt-4 mb-6 leading-relaxed">
               Renews automatically via UPI Autopay on your plan's cycle. You can cancel the mandate anytime from your UPI app.
             </p>
 
