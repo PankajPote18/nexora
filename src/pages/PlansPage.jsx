@@ -30,7 +30,7 @@ const formatPrice = (value) => {
 };
 
 const PAY_BUTTON_CLASS =
-  'w-full py-4 rounded-xl bg-[#e0474c] hover:bg-[#c93b40] text-white font-bold text-xl uppercase tracking-wide ' +
+  'w-full py-4 rounded-xl bg-brand hover:bg-brand-hover text-white font-bold text-xl uppercase tracking-wide ' +
   'shadow-lg transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2';
 
 const PlansPage = () => {
@@ -330,7 +330,7 @@ const PlansPage = () => {
             </div>
           ) : loading ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="animate-spin text-[#e0474c]" size={28} />
+              <Loader2 className="animate-spin text-brand" size={28} />
             </div>
           ) : noPlanAvailable ? (
             <div data-testid="plans-load-error" className="w-full flex flex-col items-center text-center gap-4 py-4">
@@ -349,7 +349,7 @@ const PlansPage = () => {
                   data-selected="true"
                   className="flex flex-col items-center text-center mb-8"
                 >
-                  <p className="text-[#e0474c] font-bold text-2xl underline decoration-2 underline-offset-8">
+                  <p className="text-brand font-bold text-2xl underline decoration-2 underline-offset-8">
                     {plan.name} Plan at ₹{priceLabel}
                   </p>
                   <p className="text-gray-300 text-base mt-4">Billed as ₹{priceLabel}/{cadence}</p>
@@ -385,7 +385,7 @@ const PlansPage = () => {
                       <button
                         onClick={() => handleCheckStatusNow(txnid)}
                         data-testid="check-status-button"
-                        className="mt-2 text-[#e0474c] text-sm font-semibold hover:underline cursor-pointer"
+                        className="mt-2 text-brand text-sm font-semibold hover:underline cursor-pointer"
                       >
                         Check status now
                       </button>
