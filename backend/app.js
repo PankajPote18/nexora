@@ -100,6 +100,7 @@ app.use('/api/master', require('./routes/master.routes'));
 app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
 app.use('/api/trays', require('./routes/tray.routes'));
 app.use('/api/payments', require('./routes/payment.routes'));
+app.use('/api/site-settings', require('./routes/siteSetting.routes'));
 
 // Website Analytics System (see CLAUDE.md §23) — deliberately isolated from
 // /api/admin: its own model files (models/analytics/), controllers

@@ -16,6 +16,7 @@ const Vendor = require('./Vendor');
 const Tray = require('./Tray');
 const Payment = require('./Payment');
 const Subscription = require('./Subscription');
+const SiteSetting = require('./SiteSetting');
 
 // Analytics module (see CLAUDE.md §23) — isolated tables, own subfolder.
 // Associations are informational only (no admin/consumer model references
@@ -77,6 +78,7 @@ module.exports = {
     Tray,
     Payment,
     Subscription,
+    SiteSetting,
     Visitor,
     Session,
     PageView,

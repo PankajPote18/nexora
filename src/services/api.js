@@ -111,6 +111,13 @@ export const plansApi = {
   toggle: (id) => patch(`/subscription-plans/${id}/toggle`),
 };
 
+// ── Site Settings (admin-managed page settings, e.g. Explore Plans background)
+export const siteSettingsApi = {
+  getAll: () => get('/site-settings'),
+  // Only the keys passed are changed; a null value clears that setting.
+  update: (data) => put('/site-settings', data),
+};
+
 // ── Movies ───────────────────────────────────────────────────────────────────
 // getAll takes a params object ({ page, limit, category_id, ids, search }) so
 // every movie list fetch (Home, Search, Detail's fallback, Admin) goes

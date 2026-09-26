@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Edit2, Trash2, Plus, Check, X, Loader2 } from 'lucide-react';
 import { plansApi } from '../../services/api';
+import ExplorePlansBackground from './ExplorePlansBackground';
 
 // Custom Toggle Component matching the reference UI
 const CustomToggle = ({ isOn, onToggle }) => (
@@ -246,6 +247,8 @@ const AdminSubscriptions = () => {
           </div>
         </div>
       </div>
+
+      <ExplorePlansBackground />
 
       {/* Add/Edit Modal — exact same UI as before, discount fields removed */}
       {isModalOpen && editingPlan && (

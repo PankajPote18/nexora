@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import { plansApi, paymentsApi } from '../services/api';
+import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { plansApi, paymentsApi, siteSettingsApi } from '../services/api';
 import { useAuth, markPaid } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
 import { getStoredClickId } from '../analytics/affiliateClickId';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
+import defaultBanner from '../assets/explore-plans-banner.png';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
 // (fired the instant Razorpay Checkout's in-browser `handler` confirms a
@@ -18,6 +19,19 @@ const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 10; // ~30 seconds
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const CADENCE_LABEL = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
+
+// "199.00" -> "199", "9.99" -> "9.99"
+const formatPrice = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value ?? '');
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+};
+
+const PAY_BUTTON_CLASS =
+  'w-full py-4 rounded-xl bg-[#e0474c] hover:bg-[#c93b40] text-white font-bold text-xl uppercase tracking-wide ' +
+  'shadow-lg transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2';
 
 const PlansPage = () => {
   const navigate = useNavigate();
@@ -39,6 +53,19 @@ const PlansPage = () => {
   const [metaEventId, setMetaEventId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+
+  // Admin-managed background (Admin → Plans → Explore Plans Background):
+  // separate desktop/mobile images; either one alone is used everywhere.
+  const [background, setBackground] = useState({ desktop: null, mobile: null });
+  useEffect(() => {
+    siteSettingsApi
+      .getAll()
+      .then((settings) => setBackground({
+        desktop: settings.explore_plans_bg_desktop || null,
+        mobile: settings.explore_plans_bg_mobile || null,
+      }))
+      .catch((err) => console.error('Background settings fetch failed:', err));
+  }, []);
 
   // Explore Plans shows a single plan — the Monthly one — falling back to the
   // recommended plan, then the first active plan, if no Monthly plan exists.
@@ -264,149 +291,141 @@ const PlansPage = () => {
   const noPlanAvailable = !loading && !selectedPlan;
   const plan = plans.find((p) => p.id === selectedPlan);
 
+  const priceLabel = plan ? formatPrice(plan.original_price) : '';
+  const cadence = plan ? (CADENCE_LABEL[(plan.billing_cycle || '').toUpperCase()] || 'month') : 'month';
+  // Admin-uploaded banner if set (mobile/desktop art direction), otherwise the
+  // built-in default banner.
+  const bannerSrc = background.desktop || background.mobile || defaultBanner;
+
   return (
-    <div className="w-full bg-bg-dark pt-24 pb-12 flex flex-col items-center px-4 min-h-[calc(100vh-80px)]">
-      <div className="w-full max-w-md bg-black border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden mt-8">
-        {paymentPhase !== 'success' && (
-          <button
-            onClick={() => navigate(-1)}
-            className="absolute top-6 left-6 text-gray-400 hover:text-white transition-colors cursor-pointer"
-          >
-            <ArrowLeft size={24} />
-          </button>
-        )}
+    <div className="w-full bg-black min-h-[calc(100vh-80px)] flex flex-col items-center pt-16 md:pt-20 pb-12">
+      <h1 className="sr-only">Explore Plans</h1>
+      <div className="w-full max-w-md md:max-w-lg flex flex-col">
+        {/* Banner — full column width, natural height, so it's never cropped
+            on any screen size. */}
+        <picture className="block w-full">
+          {background.mobile && <source media="(max-width: 767px)" srcSet={background.mobile} />}
+          {background.desktop && <source media="(min-width: 768px)" srcSet={background.desktop} />}
+          <img
+            src={bannerSrc}
+            alt=""
+            data-testid="plans-banner"
+            className="w-full h-auto select-none"
+            draggable={false}
+            decoding="async"
+          />
+        </picture>
 
-        {paymentPhase === 'success' ? (
-          // Success: tick mark, then the effect above redirects home.
-          <div
-            data-testid="payment-status-card"
-            data-status="success"
-            className="flex flex-col items-center justify-center text-center py-16 gap-3 auth-pop-in"
-          >
-            <CheckCircle2 className="text-green-500" size={64} />
-            <p className="text-white text-xl font-bold">Payment successful</p>
-            <p className="text-gray-400 text-sm">Your subscription is now active. Taking you home…</p>
-          </div>
-        ) : (
-        <>
-        <h1 className="text-white text-2xl font-bold text-center mb-8 tracking-wide">
-          EXPLORE PLANS
-        </h1>
-
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="animate-spin text-[#00A8E1]" size={28} />
-          </div>
-        ) : noPlanAvailable ? (
-          <div data-testid="plans-load-error" className="flex flex-col items-center text-center gap-4 py-6">
-            <AlertTriangle className="text-yellow-500" size={32} />
-            <p className="text-white font-bold">Couldn't load payment details</p>
-            <p className="text-gray-400 text-sm">Please check your connection and try again.</p>
-            <button
-              onClick={fetchPlans}
-              data-testid="retry-plans-button"
-              className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg transition-all duration-200 cursor-pointer"
+        <div className="px-5 pt-8 flex flex-col items-center">
+          {paymentPhase === 'success' ? (
+            // Success: tick mark, then the effect above redirects home.
+            <div
+              data-testid="payment-status-card"
+              data-status="success"
+              className="flex flex-col items-center justify-center text-center py-8 gap-3 auth-pop-in"
             >
-              Try Again
-            </button>
-          </div>
-        ) : (
-          <>
-            {plan && (
-              <div
-                data-testid={`plan-option-${plan.id}`}
-                data-selected="true"
-                className="relative overflow-hidden flex items-center justify-between p-4 rounded-xl border-2 border-[#00A8E1] bg-[#00A8E1]/5 mb-8"
-              >
-                <div className="flex items-center space-x-3 md:space-x-4">
-                  <div className="w-4 h-4 md:w-5 md:h-5 rounded-full border-2 border-[#00A8E1] flex items-center justify-center">
-                    <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-[#00A8E1]"></div>
-                  </div>
-                  <span className="text-white font-bold text-base md:text-lg">{plan.name}</span>
-                </div>
-                <span className="text-white font-bold text-base md:text-lg">₹ {plan.original_price}</span>
-              </div>
-            )}
-
-            <p className="text-gray-500 text-xs text-center -mt-4 mb-6 leading-relaxed">
-              Renews automatically via UPI Autopay on your plan's cycle. You can cancel the mandate anytime from your UPI app.
-            </p>
-
-            {/* Payment status card — failed/cancelled/timeout */}
-            {(paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
-              <div
-                data-testid="payment-status-card"
-                data-status={paymentPhase}
-                className="mb-6 p-4 rounded-xl border border-gray-800 bg-[#0f1115] flex flex-col items-center text-center gap-2"
-              >
-                {paymentPhase === 'failed' && (
-                  <>
-                    <XCircle className="text-red-500" size={32} />
-                    <p className="text-white font-bold">Payment failed</p>
-                    <p className="text-gray-400 text-sm">Your payment could not be completed. You have not been charged.</p>
-                  </>
-                )}
-                {paymentPhase === 'cancelled' && (
-                  <>
-                    <XCircle className="text-yellow-500" size={32} />
-                    <p className="text-white font-bold">Payment cancelled</p>
-                    <p className="text-gray-400 text-sm">You closed the payment window before completing payment.</p>
-                  </>
-                )}
-                {paymentPhase === 'timeout' && (
-                  <>
-                    <AlertTriangle className="text-yellow-500" size={32} />
-                    <p className="text-white font-bold">Still confirming your payment</p>
-                    <p className="text-gray-400 text-sm">This is taking longer than usual. Check back in a few minutes, or check now.</p>
-                    <button
-                      onClick={() => handleCheckStatusNow(txnid)}
-                      data-testid="check-status-button"
-                      className="mt-2 text-[#00A8E1] text-sm font-semibold hover:underline cursor-pointer"
-                    >
-                      Check status now
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {errorMsg && (
-              <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
-            )}
-
-            {/* Pay Now / status button */}
-            {(paymentPhase === 'checkout_open' || paymentPhase === 'confirming') ? (
-              <button
-                disabled
-                data-testid="awaiting-confirmation-indicator"
-                className="w-full py-4 bg-[#00A8E1]/60 text-white font-bold text-lg rounded-full shadow-lg flex items-center justify-center gap-2 cursor-not-allowed"
-              >
-                <Loader2 className="animate-spin" size={20} />
-                {paymentPhase === 'checkout_open' ? 'Waiting for payment…' : 'Confirming payment…'}
-              </button>
-            ) : (paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout' || paymentPhase === 'error') ? (
-              <button
-                onClick={resetPaymentFlow}
-                data-testid="try-again-button"
-                className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
-              >
+              <CheckCircle2 className="text-green-500" size={64} />
+              <p className="text-white text-xl font-bold">Payment successful</p>
+              <p className="text-gray-400 text-sm">Your subscription is now active. Taking you home…</p>
+            </div>
+          ) : loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="animate-spin text-[#e0474c]" size={28} />
+            </div>
+          ) : noPlanAvailable ? (
+            <div data-testid="plans-load-error" className="w-full flex flex-col items-center text-center gap-4 py-4">
+              <AlertTriangle className="text-yellow-500" size={32} />
+              <p className="text-white font-bold">Couldn&apos;t load payment details</p>
+              <p className="text-gray-400 text-sm">Please check your connection and try again.</p>
+              <button onClick={fetchPlans} data-testid="retry-plans-button" className={PAY_BUTTON_CLASS}>
                 Try Again
               </button>
-            ) : (
-              <button
-                onClick={handlePayNow}
-                disabled={paymentPhase === 'creating' || !selectedPlan}
-                data-testid="pay-now-button"
-                className="w-full py-4 bg-[#00A8E1] hover:bg-[#008bc0] text-white font-bold text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
-              >
-                {paymentPhase === 'creating' && <Loader2 className="animate-spin" size={20} />}
-                {paymentPhase === 'creating' ? 'Starting payment…' : 'Pay Now'}
-              </button>
-            )}
-          </>
-        )}
-        </>
-        )}
+            </div>
+          ) : (
+            <>
+              {plan && (
+                <div
+                  data-testid={`plan-option-${plan.id}`}
+                  data-selected="true"
+                  className="flex flex-col items-center text-center mb-8"
+                >
+                  <p className="text-[#e0474c] font-bold text-2xl underline decoration-2 underline-offset-8">
+                    {plan.name} Plan at ₹{priceLabel}
+                  </p>
+                  <p className="text-gray-300 text-base mt-4">Billed as ₹{priceLabel}/{cadence}</p>
+                </div>
+              )}
+
+              {/* Payment status card — failed/cancelled/timeout */}
+              {(paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
+                <div
+                  data-testid="payment-status-card"
+                  data-status={paymentPhase}
+                  className="w-full mb-6 p-4 rounded-xl border border-gray-800 bg-[#0f1115] flex flex-col items-center text-center gap-2"
+                >
+                  {paymentPhase === 'failed' && (
+                    <>
+                      <XCircle className="text-red-500" size={32} />
+                      <p className="text-white font-bold">Payment failed</p>
+                      <p className="text-gray-400 text-sm">Your payment could not be completed. You have not been charged.</p>
+                    </>
+                  )}
+                  {paymentPhase === 'cancelled' && (
+                    <>
+                      <XCircle className="text-yellow-500" size={32} />
+                      <p className="text-white font-bold">Payment cancelled</p>
+                      <p className="text-gray-400 text-sm">You closed the payment window before completing payment.</p>
+                    </>
+                  )}
+                  {paymentPhase === 'timeout' && (
+                    <>
+                      <AlertTriangle className="text-yellow-500" size={32} />
+                      <p className="text-white font-bold">Still confirming your payment</p>
+                      <p className="text-gray-400 text-sm">This is taking longer than usual. Check back in a few minutes, or check now.</p>
+                      <button
+                        onClick={() => handleCheckStatusNow(txnid)}
+                        data-testid="check-status-button"
+                        className="mt-2 text-[#e0474c] text-sm font-semibold hover:underline cursor-pointer"
+                      >
+                        Check status now
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {errorMsg && (
+                <p data-testid="payment-error-message" className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
+              )}
+
+              {/* Pay Now / status button */}
+              {(paymentPhase === 'checkout_open' || paymentPhase === 'confirming') ? (
+                <button disabled data-testid="awaiting-confirmation-indicator" className={PAY_BUTTON_CLASS}>
+                  <Loader2 className="animate-spin" size={20} />
+                  {paymentPhase === 'checkout_open' ? 'Waiting for payment…' : 'Confirming payment…'}
+                </button>
+              ) : (paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout' || paymentPhase === 'error') ? (
+                <button onClick={resetPaymentFlow} data-testid="try-again-button" className={PAY_BUTTON_CLASS}>
+                  Try Again
+                </button>
+              ) : (
+                <button
+                  onClick={handlePayNow}
+                  disabled={paymentPhase === 'creating' || !selectedPlan}
+                  data-testid="pay-now-button"
+                  className={PAY_BUTTON_CLASS}
+                >
+                  {paymentPhase === 'creating' && <Loader2 className="animate-spin" size={20} />}
+                  {paymentPhase === 'creating' ? 'Starting payment…' : 'Pay Now'}
+                </button>
+              )}
+
+              <p className="text-gray-500 text-xs text-center mt-5 leading-relaxed">
+                Renews automatically via UPI Autopay on your plan&apos;s cycle. You can cancel the mandate anytime from your UPI app.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
